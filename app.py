@@ -5,12 +5,11 @@ import tempfile
 
 st.set_page_config(
     page_title="Movie Recap AI",
-    page_icon="🎬",
-    layout="centered"
+    page_icon="🎬"
 )
 
 st.title("🎬 Movie Recap AI")
-st.write("Upload a movie/video and analyze its basic information.")
+st.write("Upload a movie and analyze video information.")
 
 uploaded_file = st.file_uploader(
     "🎥 Upload Movie / Video",
@@ -19,10 +18,8 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is not None:
 
-    # File size
     file_size_mb = uploaded_file.size / (1024 * 1024)
 
-    # Save temporary video file
     suffix = os.path.splitext(uploaded_file.name)[1]
 
     with tempfile.NamedTemporaryFile(
@@ -33,21 +30,20 @@ if uploaded_file is not None:
         temp_file.write(uploaded_file.getbuffer())
         video_path = temp_file.name
 
-    # Open video
     cap = cv2.VideoCapture(video_path)
 
     if not cap.isOpened():
+
         st.error("❌ Video file could not be opened.")
+
     else:
 
-        # Video information
         fps = cap.get(cv2.CAP_PROP_FPS)
         frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
 
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        # Duration
         if fps > 0:
             duration_seconds = frame_count / fps
         else:
@@ -92,7 +88,6 @@ if uploaded_file is not None:
 
     cap.release()
 
-    # Remove temporary file
     try:
         os.remove(video_path)
     except:
