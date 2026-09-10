@@ -369,3 +369,78 @@ if "voiceover_file" in st.session_state:
         st.session_state["voiceover_file"],
         format="audio/mp3"
     )
+st.divider()
+st.subheader("🇲🇲 Myanmar Subtitle")
+
+if "myanmar_recap" in st.session_state:
+
+    if st.button("💬 Generate Myanmar Subtitle"):
+
+        try:
+            api_key = st.secrets["GEMINI_API_KEY"]
+            client = genai.Client(api_key=api_key)
+
+            myanmar_text = st.session_state["myanmar_recap"]
+
+            prompt = f"""
+Create Myanmar subtitles for the following movie recap narration.
+
+Rules:
+- Write only Myanmar Burmese.
+- Split the narration into short subtitle segments.
+- Each segment should be easy to read.
+- Maximum 12 words per subtitle.
+- Keep the original meaning.
+- Do not invent information.
+- Return ONLY valid JSON.
+- Do not use markdown.
+
+Required JSON format:
+
+[
+  {{
+    "start": 0,
+    "end": 5,
+    "text": "မြန်မာစာတန်းထိုး"
+  }},
+  {{
+    "start": 5,
+    "end": 10,
+    "text": "နောက်ထပ် မြန်မာစာတန်းထိုး"
+  }}
+]
+
+Myanmar Recap:
+
+{myanmar_text}
+"""
+
+            response = client.models.generate_content(
+                model="gemini-3.6-flash",
+                contents=prompt
+            )
+
+            import json
+
+            subtitle_data = json.loads(response.text)
+
+            st.session_state["subtitle_data"] = subtitle_data
+
+            st.success("✅ Myanmar Subtitle generated!")
+
+        except Exception as e:
+            st.error(f"❌ Subtitle generation failed: {e}")
+
+
+if "subtitle_data" in st.session_state:
+
+    st.text_area(
+        "💬 Myanmar Subtitle Preview",
+        "\n".join(
+            [
+                f'{item["start"]:.1f}s → {item["end"]:.1f}s | {item["text"]}'
+                for item in st.session_state["subtitle_data"]
+            ]
+        ),
+        height=400
+    )
