@@ -88,75 +88,81 @@ if uploaded_file is not None:
 
     cap.release()
 
-    
-st.divider()
+    st.divider()
 
 st.subheader("🎤 Movie Transcript")
 
-if st.button("📝 Generate Transcript"):
+if uploaded_file is not None:
 
-    st.info("⏳ Transcribing movie audio... Please wait.")
+    if st.button("📝 Generate Transcript"):
 
-    try:
-        import whisper
+        st.info("⏳ Transcribing movie audio... Please wait.")
 
-        model = whisper.load_model("base")
+        try:
+            import whisper
 
-        result = model.transcribe(
-            video_path,
-            language="en"
-        )
+            model = whisper.load_model("base")
 
-        transcript_result = result
-        transcript = result["text"]
-        
-        st.success("✅ Transcript generated!")
+            result = model.transcribe(
+                video_path,
+                language="en"
+            )
 
-        st.text_area(
-            "📄 Transcript",
-            transcript,
-            height=300
-        )
+            st.session_state["transcript_result"] = result
+            st.session_state["transcript"] = result["text"]
 
-    except Exception as e:
-        st.error(f"❌ Transcription failed: {e}")
+            st.success("✅ Transcript generated!")
+
+        except Exception as e:
+            st.error(f"❌ Transcription failed: {e}")
+
+
+# Show saved transcript
+if "transcript" in st.session_state:
+
+    st.text_area(
+        "📄 Transcript",
+        st.session_state["transcript"],
+        height=300
+    )
+
 
 st.divider()
 
 st.subheader("🎬 Scene Analysis")
 
-if "transcript_result" in locals() and transcript:
+if "transcript_result" in st.session_state:
+
     if st.button("🎞️ Analyze Scenes"):
 
-        segments = transcript_result.get("segments", [])
+        segments = st.session_state["transcript_result"].get(
+            "segments",
+            []
+        )
 
         if not segments:
-            st.warning("⚠️ No timestamped transcript segments found.")
+
+            st.warning(
+                "⚠️ No timestamped transcript segments found."
+            )
+
         else:
-            scenes = []
+
+            st.success(
+                f"✅ {len(segments)} scenes analyzed!"
+            )
 
             for i, segment in enumerate(segments):
+
                 start = segment.get("start", 0)
                 end = segment.get("end", 0)
                 text = segment.get("text", "").strip()
 
                 if text:
-                    scenes.append({
-                        "scene": i + 1,
-                        "start": start,
-                        "end": end,
-                        "text": text
-                    })
 
-            st.success(f"✅ {len(scenes)} scenes analyzed!")
+                    st.markdown(
+                        f"### Scene {i + 1} "
+                        f"({start:.1f}s → {end:.1f}s)"
+                    )
 
-            for scene in scenes:
-                start = scene["start"]
-                end = scene["end"]
-
-                st.markdown(
-                    f"### Scene {scene['scene']} "
-                    f"({start:.1f}s → {end:.1f}s)"
-                )
-
-                st.write(scene["text"])
+                    st.write(text)
