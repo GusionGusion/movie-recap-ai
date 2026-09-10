@@ -358,7 +358,11 @@ if "myanmar_recap" in st.session_state:
 
 st.divider()
 st.subheader("🎙️ Myanmar Female Voiceover")
-
+voice_speed = st.selectbox(
+    "🎙️ Voice Speed",
+    [1.0, 1.1, 1.2],
+    index=0
+)
 if "myanmar_recap" in st.session_state:
 
     if st.button("🎙️ Generate Myanmar Voiceover"):
@@ -374,7 +378,28 @@ if "myanmar_recap" in st.session_state:
                     text,
                     "my-MM-NilarNeural"
                 )
-                await communicate.save("myanmar_voiceover.mp3")
+                await communicate.save(await communicate.save("myanmar_voiceover.mp3")
+
+if voice_speed != 1.0:
+
+    import subprocess
+
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            "myanmar_voiceover.mp3",
+            "-filter:a",
+            f"atempo={voice_speed}",
+            "myanmar_voiceover_speed.mp3"
+        ],
+        check=True
+    )
+
+    return "myanmar_voiceover_speed.mp3"
+
+return "myanmar_voiceover.mp3")
 
             asyncio.run(create_voice())
 
