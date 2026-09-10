@@ -284,14 +284,10 @@ Scene Analysis:
 
             st.session_state["recap_script"] = response.text
 
-            st.success(
-                "✅ Movie Recap Script generated!"
-            )
+            st.success("✅ Movie Recap Script generated!")
 
         except Exception as e:
-            st.error(
-                f"❌ Recap generation failed: {e}"
-            )
+            st.error(f"❌ Recap generation failed: {e}")
 
 
 if "recap_script" in st.session_state:
