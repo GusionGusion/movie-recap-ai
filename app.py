@@ -585,22 +585,9 @@ if "subtitle_data" in st.session_state:
     st.success(
         f"✅ Timing fixed: {len(fixed_subtitles)} subtitles"
     )
+                )
 st.divider()
 st.subheader("🎬 Final Video Export")
-st.subheader("🧊 Freeze Frame")
-
-freeze_enabled = st.checkbox(
-    "Enable Freeze Frame",
-    value=True
-)
-
-freeze_max = st.slider(
-    "Maximum Freeze Duration (seconds)",
-    0.0,
-    5.0,
-    2.0,
-    0.5
-)
 
 if (
     "voiceover_file" in st.session_state
@@ -610,17 +597,20 @@ if (
 
     if st.button("🎬 Create Final Recap Video"):
 
-        try:freeze_duration = 0
-
-    
+        try:
             import subprocess
 
             video_bytes = st.session_state["uploaded_file"]
 
-            with open("original_movie.mp4", "wb") as f:
+            with open(
+                "original_movie.mp4",
+                "wb"
+            ) as f:
                 f.write(video_bytes)
 
-            voice_file = st.session_state["voiceover_file"]
+            voice_file = st.session_state[
+                "voiceover_file"
+            ]
 
             ass_content = """[Script Info]
 ScriptType: v4.00+
@@ -636,23 +626,38 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
             def ass_time(seconds):
-                hours = int(seconds // 3600)
-                minutes = int((seconds % 3600) // 60)
-                secs = int(seconds % 60)
-                centiseconds = int((seconds % 1) * 100)
 
-                return (
-                    f"{hours}:{minutes:02d}:"
-                    f"{secs:02d}.{centiseconds:02d}"
+                hours = int(seconds // 3600)
+
+                minutes = int(
+                    (seconds % 3600) // 60
                 )
 
-            for item in st.session_state["subtitle_data"]:
+                secs = int(seconds % 60)
+
+                centiseconds = int(
+                    (seconds % 1) * 100
+                )
+
+                return (
+                    f"{hours}:"
+                    f"{minutes:02d}:"
+                    f"{secs:02d}."
+                    f"{centiseconds:02d}"
+                )
+
+            for item in st.session_state[
+                "subtitle_data"
+            ]:
 
                 start = float(item["start"])
                 end = float(item["end"])
                 text = item["text"].strip()
 
-                text = text.replace("\n", "\\N")
+                text = text.replace(
+                    "\n",
+                    "\\N"
+                )
 
                 ass_content += (
                     f"Dialogue: 0,"
@@ -667,9 +672,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 "w",
                 encoding="utf-8-sig"
             ) as f:
+
                 f.write(ass_content)
 
-            output_video = "final_movie_recap.mp4"
+            output_video = (
+                "final_movie_recap.mp4"
+            )
 
             subprocess.run(
                 [
@@ -699,14 +707,21 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 check=True
             )
 
-            st.success("✅ Final video created!")
+            st.success(
+                "✅ Final video created!"
+            )
 
-            with open(output_video, "rb") as f:
+            with open(
+                output_video,
+                "rb"
+            ) as f:
 
                 st.download_button(
                     "📥 Download Final Recap Video",
                     data=f.read(),
-                    file_name="final_movie_recap.mp4",
+                    file_name=(
+                        "final_movie_recap.mp4"
+                    ),
                     mime="video/mp4"
                 )
 
