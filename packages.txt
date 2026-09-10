@@ -1,4 +1,4 @@
 ffmpeg
-ffmpeg
 fonts-noto
 fonts-noto-cjk
+fonts-sil-abyssinica
