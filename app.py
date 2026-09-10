@@ -235,23 +235,15 @@ if "ai_scene_analysis" in st.session_state:
         height=600
     )
 st.divider()
-
 st.subheader("📝 Movie Recap Script")
 
 if "ai_scene_analysis" in st.session_state:
-
     if st.button("🎬 Generate Recap Script"):
-
         try:
             api_key = st.secrets["GEMINI_API_KEY"]
+            client = genai.Client(api_key=api_key)
 
-            client = genai.Client(
-                api_key=api_key
-            )
-
-            scene_analysis = st.session_state[
-                "ai_scene_analysis"
-            ]
+            scene_analysis = st.session_state["ai_scene_analysis"]
 
             prompt = f"""
 You are a professional movie recap script writer.
@@ -262,14 +254,10 @@ movie recap narration script.
 Rules:
 - Follow chronological order.
 - Do not invent events.
-- Do not add information that is not supported by the analysis.
 - Focus on important story events.
 - Remove unnecessary repetition.
 - Make the narration engaging and easy to understand.
 - Write naturally for voiceover.
-- Use clear paragraphs.
-- Do not include dialogue unless essential.
-- Do not include camera directions.
 - Write only the recap narration.
 
 Scene Analysis:
@@ -283,15 +271,12 @@ Scene Analysis:
             )
 
             st.session_state["recap_script"] = response.text
-
             st.success("✅ Movie Recap Script generated!")
 
         except Exception as e:
             st.error(f"❌ Recap generation failed: {e}")
 
-
 if "recap_script" in st.session_state:
-
     st.text_area(
         "🎬 Recap Script",
         st.session_state["recap_script"],
