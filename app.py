@@ -92,3 +92,34 @@ if uploaded_file is not None:
         os.remove(video_path)
     except:
         pass
+st.divider()
+
+st.subheader("🎤 Movie Transcript")
+
+if st.button("📝 Generate Transcript"):
+
+    st.info("⏳ Transcribing movie audio... Please wait.")
+
+    try:
+        import whisper
+
+        model = whisper.load_model("base")
+
+        result = model.transcribe(
+            video_path,
+            language="en"
+        )
+
+        transcript = result["text"]
+
+        st.success("✅ Transcript generated!")
+
+        st.text_area(
+            "📄 Transcript",
+            transcript,
+            height=300
+        )
+
+    except Exception as e:
+        st.error(f"❌ Transcription failed: {e}")
+
