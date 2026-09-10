@@ -281,7 +281,7 @@ if "recap_script" in st.session_state:
         st.session_state["recap_script"],
         height=600
     )
-  st.divider()
+st.divider()
 st.subheader("🇲🇲 Myanmar Recap Script")
 
 if "recap_script" in st.session_state:
@@ -302,8 +302,8 @@ Rules:
 - Preserve the original meaning exactly.
 - Do not add or remove story events.
 - Use natural spoken Myanmar Burmese.
-- Make it suitable for a female voiceover.
-- Keep the chronological order.
+- Make it suitable for female voiceover.
+- Keep chronological order.
 - Do not include English.
 - Write only the Myanmar narration.
 
@@ -329,13 +329,14 @@ if "myanmar_recap" in st.session_state:
 
     st.text_area(
         "🇲🇲 Myanmar Recap",
-        st.session_state["myanmar_recap"],
-        height=500
-    )  
-st.divider()
-st.subheader("🇲🇲 Myanmar Female Voiceover")
+        st.session_state["myanmar_recap"]
+    )
 
-if "recap_script" in st.session_state:
+
+st.divider()
+st.subheader("🎙️ Myanmar Female Voiceover")
+
+if "myanmar_recap" in st.session_state:
 
     if st.button("🎙️ Generate Myanmar Voiceover"):
 
@@ -343,7 +344,7 @@ if "recap_script" in st.session_state:
             import edge_tts
             import asyncio
 
-            text = st.session_state["recap_script"]
+            text = st.session_state["myanmar_recap"]
 
             async def create_voice():
                 communicate = edge_tts.Communicate(
@@ -360,6 +361,7 @@ if "recap_script" in st.session_state:
 
         except Exception as e:
             st.error(f"❌ Voiceover generation failed: {e}")
+
 
 if "voiceover_file" in st.session_state:
 
