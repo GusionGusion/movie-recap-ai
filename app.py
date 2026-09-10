@@ -535,8 +535,7 @@ if (
 
             voice_file = st.session_state["voiceover_file"]
 
-            srt_content = ""
-                        ass_content = """[Script Info]
+            ass_content = """[Script Info]
 ScriptType: v4.00+
 PlayResX: 576
 PlayResY: 1032
@@ -548,7 +547,8 @@ Style: Myanmar,Noto Sans Myanmar,28,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
-                        def ass_time(seconds):
+
+            def ass_time(seconds):
                 hours = int(seconds // 3600)
                 minutes = int((seconds % 3600) // 60)
                 secs = int(seconds % 60)
@@ -581,39 +581,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 encoding="utf-8-sig"
             ) as f:
                 f.write(ass_content)
-
-            def srt_time(seconds):
-                hours = int(seconds // 3600)
-                minutes = int((seconds % 3600) // 60)
-                secs = int(seconds % 60)
-                millis = int((seconds % 1) * 1000)
-
-                return (
-                    f"{hours:02d}:{minutes:02d}:"
-                    f"{secs:02d},{millis:03d}"
-                )
-
-            for i, item in enumerate(
-                st.session_state["subtitle_data"],
-                start=1
-            ):
-
-                start = float(item["start"])
-                end = float(item["end"])
-                text = item["text"].strip()
-
-                srt_content += (
-                    f"{i}\n"
-                    f"{srt_time(start)} --> {srt_time(end)}\n"
-                    f"{text}\n\n"
-                )
-
-            with open(
-                "myanmar_subtitles.srt",
-                "w",
-                encoding="utf-8"
-            ) as f:
-                f.write(srt_content)
 
             output_video = "final_movie_recap.mp4"
 
