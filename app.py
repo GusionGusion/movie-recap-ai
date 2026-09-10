@@ -645,7 +645,22 @@ if (
 
     if st.button("🎬 Create Final Recap Video"):
 
-        try:
+        try:freeze_duration = 0
+
+if freeze_enabled and freeze_max > 0:
+
+    subtitle_data = st.session_state["subtitle_data"]
+
+    if subtitle_data:
+
+        last_subtitle = subtitle_data[-1]
+
+        video_end = float(last_subtitle["end"])
+
+        freeze_duration = min(
+            freeze_max,
+            max(0, video_duration - video_end)
+        )
             import subprocess
 
             video_bytes = st.session_state["uploaded_file"]
