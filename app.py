@@ -88,10 +88,7 @@ if uploaded_file is not None:
 
     cap.release()
 
-    try:
-        os.remove(video_path)
-    except:
-        pass
+    
 st.divider()
 
 st.subheader("🎤 Movie Transcript")
