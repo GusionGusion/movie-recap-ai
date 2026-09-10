@@ -612,8 +612,6 @@ if (
 
         try:freeze_duration = 0
 
-if freeze_enabled and freeze_max > 0:
-
     
             import subprocess
 
