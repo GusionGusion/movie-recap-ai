@@ -384,11 +384,33 @@ if "myanmar_recap" in st.session_state:
                     "myanmar_voiceover.mp3"
                 )
 
+            
             asyncio.run(create_voice())
 
-            st.session_state["voiceover_file"] = (
-                "myanmar_voiceover.mp3"
-            )
+voice_file = "myanmar_voiceover.mp3"
+
+if voice_speed != 1.0:
+
+    import subprocess
+
+    speed_file = "myanmar_voiceover_speed.mp3"
+
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            voice_file,
+            "-filter:a",
+            f"atempo={voice_speed}",
+            speed_file
+        ],
+        check=True
+    )
+
+    voice_file = speed_file
+
+st.session_state["voiceover_file"] = voice_file
 
             st.success(
                 "✅ Myanmar Female Voiceover generated!"
