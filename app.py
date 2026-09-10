@@ -622,6 +622,20 @@ if "subtitle_data" in st.session_state:
     )
 st.divider()
 st.subheader("🎬 Final Video Export")
+st.subheader("🧊 Freeze Frame")
+
+freeze_enabled = st.checkbox(
+    "Enable Freeze Frame",
+    value=True
+)
+
+freeze_max = st.slider(
+    "Maximum Freeze Duration (seconds)",
+    0.0,
+    5.0,
+    2.0,
+    0.5
+)
 
 if (
     "voiceover_file" in st.session_state
