@@ -358,16 +358,12 @@ if "myanmar_recap" in st.session_state:
 
 st.divider()
 st.subheader("🎙️ Myanmar Female Voiceover")
-voice_speed = st.selectbox(
-    "🎙️ Voice Speed",
-    [1.0, 1.1, 1.2],
-    index=0
-)
+
 if "myanmar_recap" in st.session_state:
 
     if st.button("🎙️ Generate Myanmar Voiceover"):
 
-                try:
+        try:
             import edge_tts
             import asyncio
 
@@ -378,6 +374,7 @@ if "myanmar_recap" in st.session_state:
                     text,
                     "my-MM-NilarNeural"
                 )
+
                 await communicate.save(
                     "myanmar_voiceover.mp3"
                 )
@@ -393,10 +390,10 @@ if "myanmar_recap" in st.session_state:
             )
 
         except Exception as e:
+
             st.error(
                 f"❌ Voiceover generation failed: {e}"
             )
-
 
 if "voiceover_file" in st.session_state:
 
