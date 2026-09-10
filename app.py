@@ -232,8 +232,7 @@ if "ai_scene_analysis" in st.session_state:
         st.session_state["ai_scene_analysis"],
         height=500
     )
-        height=600
-    )
+    
 st.divider()
 st.subheader("📝 Movie Recap Script")
 
