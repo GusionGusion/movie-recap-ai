@@ -106,9 +106,10 @@ if st.button("📝 Generate Transcript"):
             video_path,
             language="en"
         )
+transcript_result = result
 
         transcript = result["text"]
-
+        
         st.success("✅ Transcript generated!")
 
         st.text_area(
@@ -120,3 +121,42 @@ if st.button("📝 Generate Transcript"):
     except Exception as e:
         st.error(f"❌ Transcription failed: {e}")
 
+st.divider()
+
+st.subheader("🎬 Scene Analysis")
+
+if "transcript_result" in locals() and transcript:
+    if st.button("🎞️ Analyze Scenes"):
+
+        segments = transcript_result.get("segments", [])
+
+        if not segments:
+            st.warning("⚠️ No timestamped transcript segments found.")
+        else:
+            scenes = []
+
+            for i, segment in enumerate(segments):
+                start = segment.get("start", 0)
+                end = segment.get("end", 0)
+                text = segment.get("text", "").strip()
+
+                if text:
+                    scenes.append({
+                        "scene": i + 1,
+                        "start": start,
+                        "end": end,
+                        "text": text
+                    })
+
+            st.success(f"✅ {len(scenes)} scenes analyzed!")
+
+            for scene in scenes:
+                start = scene["start"]
+                end = scene["end"]
+
+                st.markdown(
+                    f"### Scene {scene['scene']} "
+                    f"({start:.1f}s → {end:.1f}s)"
+                )
+
+                st.write(scene["text"])
