@@ -1,1 +1,4 @@
 ffmpeg
+ffmpeg
+fonts-noto
+fonts-noto-cjk
