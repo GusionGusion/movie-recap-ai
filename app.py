@@ -444,3 +444,50 @@ if "subtitle_data" in st.session_state:
         ),
         height=400
     )
+st.subheader("📥 Subtitle Export")
+
+if "subtitle_data" in st.session_state:
+
+    srt_content = ""
+
+    for i, item in enumerate(
+        st.session_state["subtitle_data"],
+        start=1
+    ):
+
+        start = float(item["start"])
+        end = float(item["end"])
+        text = item["text"].strip()
+
+        start_h = int(start // 3600)
+        start_m = int((start % 3600) // 60)
+        start_s = int(start % 60)
+        start_ms = int((start % 1) * 1000)
+
+        end_h = int(end // 3600)
+        end_m = int((end % 3600) // 60)
+        end_s = int(end % 60)
+        end_ms = int((end % 1) * 1000)
+
+        start_time = (
+            f"{start_h:02d}:{start_m:02d}:"
+            f"{start_s:02d},{start_ms:03d}"
+        )
+
+        end_time = (
+            f"{end_h:02d}:{end_m:02d}:"
+            f"{end_s:02d},{end_ms:03d}"
+        )
+
+        srt_content += (
+            f"{i}\n"
+            f"{start_time} --> {end_time}\n"
+            f"{text}\n\n"
+        )
+
+    st.download_button(
+        "📥 Download Myanmar Subtitle (.srt)",
+        data=srt_content.encode("utf-8"),
+        file_name="myanmar_subtitles.srt",
+        mime="text/plain"
+    )
