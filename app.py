@@ -106,8 +106,8 @@ if st.button("📝 Generate Transcript"):
             video_path,
             language="en"
         )
-transcript_result = result
 
+        transcript_result = result
         transcript = result["text"]
         
         st.success("✅ Transcript generated!")
