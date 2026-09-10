@@ -358,6 +358,11 @@ if "myanmar_recap" in st.session_state:
 
 st.divider()
 st.subheader("🎙️ Myanmar Female Voiceover")
+voice_speed = st.selectbox(
+    "🎙️ Voice Speed",
+    [1.0, 1.1, 1.2],
+    index=0
+)
 
 if "myanmar_recap" in st.session_state:
 
