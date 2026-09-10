@@ -2,3 +2,4 @@ streamlit
 opencv-python-headless
 openai-whisper
 google-genai
+edge-tts
