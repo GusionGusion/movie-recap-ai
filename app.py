@@ -234,6 +234,8 @@ if "ai_scene_analysis" in st.session_state:
         st.session_state["ai_scene_analysis"],
         height=500
     )
+        height=600
+    )
 st.divider()
 
 st.subheader("📝 Movie Recap Script")
@@ -268,9 +270,8 @@ Rules:
 - Make the narration engaging and easy to understand.
 - Write naturally for voiceover.
 - Use clear paragraphs.
-- Do not include dialogue unless it is essential.
+- Do not include dialogue unless essential.
 - Do not include camera directions.
-- Do not include scene-generation prompts.
 - Write only the recap narration.
 
 Scene Analysis:
