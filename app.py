@@ -19,6 +19,7 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is not None:
+   st.session_state["uploaded_file"] = uploaded_file.getvalue() 
 
     file_size_mb = uploaded_file.size / (1024 * 1024)
 
