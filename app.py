@@ -281,6 +281,57 @@ if "recap_script" in st.session_state:
         st.session_state["recap_script"],
         height=600
     )
+  st.divider()
+st.subheader("🇲🇲 Myanmar Recap Script")
+
+if "recap_script" in st.session_state:
+
+    if st.button("🇲🇲 Translate to Myanmar"):
+
+        try:
+            api_key = st.secrets["GEMINI_API_KEY"]
+            client = genai.Client(api_key=api_key)
+
+            recap_script = st.session_state["recap_script"]
+
+            prompt = f"""
+Translate the following movie recap narration into natural
+Myanmar Burmese language.
+
+Rules:
+- Preserve the original meaning exactly.
+- Do not add or remove story events.
+- Use natural spoken Myanmar Burmese.
+- Make it suitable for a female voiceover.
+- Keep the chronological order.
+- Do not include English.
+- Write only the Myanmar narration.
+
+English Recap:
+
+{recap_script}
+"""
+
+            response = client.models.generate_content(
+                model="gemini-3.6-flash",
+                contents=prompt
+            )
+
+            st.session_state["myanmar_recap"] = response.text
+
+            st.success("✅ Myanmar Recap Script generated!")
+
+        except Exception as e:
+            st.error(f"❌ Myanmar translation failed: {e}")
+
+
+if "myanmar_recap" in st.session_state:
+
+    st.text_area(
+        "🇲🇲 Myanmar Recap",
+        st.session_state["myanmar_recap"],
+        height=500
+    )  
 st.divider()
 st.subheader("🇲🇲 Myanmar Female Voiceover")
 
