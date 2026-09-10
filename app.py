@@ -573,27 +573,35 @@ if (
             ) as f:
                 f.write(srt_content)
 
-            # Add Myanmar voiceover
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-i",
-                    "original_movie.mp4",
-                    "-i",
-                    st.session_state["voiceover_file"],
-                    "-map",
-                    "0:v:0",
-                    "-map",
-                    "1:a:0",
-                    "-c:v",
-                    "copy",
-                    "-c:a",
-                    "aac",
-                    "-shortest",
-                    output_video
-                ],
-                check=True
+            # Add Myanmar voiceover + burn Myanmar subtitles
+
+subprocess.run(
+    [
+        "ffmpeg",
+        "-y",
+        "-i",
+        "original_movie.mp4",
+        "-i",
+        st.session_state["voiceover_file"],
+        "-vf",
+        "subtitles=myanmar_subtitles.srt",
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "23",
+        "-c:a",
+        "aac",
+        "-shortest",
+        output_video
+    ],
+    check=True
+)
             )
 
             st.success("✅ Final video created!")
