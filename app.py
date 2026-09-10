@@ -281,3 +281,38 @@ if "recap_script" in st.session_state:
         st.session_state["recap_script"],
         height=600
     )
+st.divider()
+st.subheader("🇲🇲 Myanmar Female Voiceover")
+
+if "recap_script" in st.session_state:
+
+    if st.button("🎙️ Generate Myanmar Voiceover"):
+
+        try:
+            import edge_tts
+            import asyncio
+
+            text = st.session_state["recap_script"]
+
+            async def create_voice():
+                communicate = edge_tts.Communicate(
+                    text,
+                    "my-MM-NilarNeural"
+                )
+                await communicate.save("myanmar_voiceover.mp3")
+
+            asyncio.run(create_voice())
+
+            st.session_state["voiceover_file"] = "myanmar_voiceover.mp3"
+
+            st.success("✅ Myanmar Female Voiceover generated!")
+
+        except Exception as e:
+            st.error(f"❌ Voiceover generation failed: {e}")
+
+if "voiceover_file" in st.session_state:
+
+    st.audio(
+        st.session_state["voiceover_file"],
+        format="audio/mp3"
+    )
