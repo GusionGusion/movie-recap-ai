@@ -217,9 +217,7 @@ Movie Transcript:
                 contents=prompt
             )
 
-            st.session_state["ai_scene_analysis"] = res
-        
-     reponse.text
+            st.session_state["ai_scene_analysis"] = response.text
 
             st.success("✅ Gemini Scene Analysis completed!")
 
