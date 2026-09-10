@@ -403,9 +403,9 @@ return "myanmar_voiceover.mp3")
 
             asyncio.run(create_voice())
 
-            st.session_state["voiceover_file"] = "myanmar_voiceover.mp3"
+st.session_state["voiceover_file"] = "myanmar_voiceover.mp3"
 
-if voice_speed != 1.0:
+st.success("✅ Myanmar Female Voiceover generated!")
 
     import subprocess
 
