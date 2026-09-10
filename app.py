@@ -367,7 +367,7 @@ if "myanmar_recap" in st.session_state:
 
     if st.button("🎙️ Generate Myanmar Voiceover"):
 
-        try:
+                try:
             import edge_tts
             import asyncio
 
@@ -378,56 +378,24 @@ if "myanmar_recap" in st.session_state:
                     text,
                     "my-MM-NilarNeural"
                 )
-                await communicate.save(await communicate.save("myanmar_voiceover.mp3")
-
-if voice_speed != 1.0:
-
-    import subprocess
-
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-i",
-            "myanmar_voiceover.mp3",
-            "-filter:a",
-            f"atempo={voice_speed}",
-            "myanmar_voiceover_speed.mp3"
-        ],
-        check=True
-    )
-
-    return "myanmar_voiceover_speed.mp3"
-
-return "myanmar_voiceover.mp3")
+                await communicate.save(
+                    "myanmar_voiceover.mp3"
+                )
 
             asyncio.run(create_voice())
 
-st.session_state["voiceover_file"] = "myanmar_voiceover.mp3"
+            st.session_state["voiceover_file"] = (
+                "myanmar_voiceover.mp3"
+            )
 
-st.success("✅ Myanmar Female Voiceover generated!")
-
-    import subprocess
-
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-i",
-            "myanmar_voiceover.mp3",
-            "-filter:a",
-            f"atempo={voice_speed}",
-            "myanmar_voiceover_speed.mp3"
-        ],
-        check=True
-    )
-
-    st.session_state["voiceover_file"] = "myanmar_voiceover_speed.mp3"
-
-            st.success("✅ Myanmar Female Voiceover generated!")
+            st.success(
+                "✅ Myanmar Female Voiceover generated!"
+            )
 
         except Exception as e:
-            st.error(f"❌ Voiceover generation failed: {e}")
+            st.error(
+                f"❌ Voiceover generation failed: {e}"
+            )
 
 
 if "voiceover_file" in st.session_state:
