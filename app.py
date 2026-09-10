@@ -528,17 +528,25 @@ if (
         try:
             import subprocess
 
-            video_file = st.session_state["uploaded_file"]
+            video_bytes = st.session_state["uploaded_file"]
 
-            output_video = "final_movie_recap.mp4"
-            subtitle_file = "myanmar_subtitles.srt"
-
-            # Save uploaded video
             with open("original_movie.mp4", "wb") as f:
-                f.write(video_file)
+                f.write(video_bytes)
 
-            # Create SRT file
+            voice_file = st.session_state["voiceover_file"]
+
             srt_content = ""
+
+            def srt_time(seconds):
+                hours = int(seconds // 3600)
+                minutes = int((seconds % 3600) // 60)
+                secs = int(seconds % 60)
+                millis = int((seconds % 1) * 1000)
+
+                return (
+                    f"{hours:02d}:{minutes:02d}:"
+                    f"{secs:02d},{millis:03d}"
+                )
 
             for i, item in enumerate(
                 st.session_state["subtitle_data"],
@@ -549,17 +557,6 @@ if (
                 end = float(item["end"])
                 text = item["text"].strip()
 
-                def srt_time(seconds):
-                    hours = int(seconds // 3600)
-                    minutes = int((seconds % 3600) // 60)
-                    secs = int(seconds % 60)
-                    millis = int((seconds % 1) * 1000)
-
-                    return (
-                        f"{hours:02d}:{minutes:02d}:"
-                        f"{secs:02d},{millis:03d}"
-                    )
-
                 srt_content += (
                     f"{i}\n"
                     f"{srt_time(start)} --> {srt_time(end)}\n"
@@ -567,53 +564,49 @@ if (
                 )
 
             with open(
-                subtitle_file,
+                "myanmar_subtitles.srt",
                 "w",
                 encoding="utf-8"
             ) as f:
                 f.write(srt_content)
 
-            # Add Myanmar voiceover + burn Myanmar subtitles
+            output_video = "final_movie_recap.mp4"
 
-subprocess.run(
-    [
-        "ffmpeg",
-        "-y",
-        "-i",
-        "original_movie.mp4",
-        "-i",
-        st.session_state["voiceover_file"],
-        "-vf",
-        "subtitles=myanmar_subtitles.srt",
-        "-map",
-        "0:v:0",
-        "-map",
-        "1:a:0",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        "23",
-        "-c:a",
-        "aac",
-        "-shortest",
-        output_video
-    ],
-    check=True
-)
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    "original_movie.mp4",
+                    "-i",
+                    voice_file,
+                    "-vf",
+                    "subtitles=myanmar_subtitles.srt",
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "1:a:0",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "veryfast",
+                    "-crf",
+                    "23",
+                    "-c:a",
+                    "aac",
+                    "-shortest",
+                    output_video
+                ],
+                check=True
             )
 
             st.success("✅ Final video created!")
 
-            with open(
-                output_video,
-                "rb"
-            ) as f:
+            with open(output_video, "rb") as f:
 
                 st.download_button(
                     "📥 Download Final Recap Video",
-                    data=f,
+                    data=f.read(),
                     file_name="final_movie_recap.mp4",
                     mime="video/mp4"
                 )
