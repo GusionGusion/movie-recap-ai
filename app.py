@@ -219,7 +219,7 @@ Movie Transcript:
 
             st.session_state["ai_scene_analysis"] = res
         
-      ponse.text
+     reponse.text
 
             st.success("✅ Gemini Scene Analysis completed!")
 
