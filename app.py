@@ -154,6 +154,8 @@ if "transcript_result" in st.session_state:
                 f"✅ {len(segments)} scenes analyzed!"
             )
 
+
+    
             for i, segment in enumerate(segments):
 
                 start = segment.get("start", 0)
@@ -168,3 +170,65 @@ if "transcript_result" in st.session_state:
                     )
 
                     st.write(text)
+st.divider()
+
+st.subheader("🤖 AI Scene Analysis")
+
+if "transcript" in st.session_state:
+
+    if st.button("🤖 Analyze with Gemini"):
+
+        try:
+            api_key = st.secrets["GEMINI_API_KEY"]
+
+            client = genai.Client(
+                api_key=api_key
+            )
+
+            transcript_text = st.session_state["transcript"]
+
+            prompt = f"""
+You are a professional movie recap analyst.
+
+Analyze the following movie transcript.
+
+For each important scene, provide:
+
+1. Scene number
+2. Approximate timestamp if available
+3. Characters involved
+4. Location
+5. Important actions
+6. Emotions
+7. Short scene summary
+
+Rules:
+- Do not invent events.
+- Follow the transcript chronology.
+- Keep the analysis clear and concise.
+
+Movie Transcript:
+
+{transcript_text}
+"""
+
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt
+            )
+
+            st.session_state["ai_scene_analysis"] = response.text
+
+            st.success("✅ Gemini Scene Analysis completed!")
+
+        except Exception as e:
+            st.error(f"❌ Gemini Analysis failed: {e}")
+
+
+if "ai_scene_analysis" in st.session_state:
+
+    st.text_area(
+        "🤖 AI Scene Analysis Result",
+        st.session_state["ai_scene_analysis"],
+        height=500
+    )
