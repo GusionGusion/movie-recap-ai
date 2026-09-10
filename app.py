@@ -536,6 +536,51 @@ if (
             voice_file = st.session_state["voiceover_file"]
 
             srt_content = ""
+                        ass_content = """[Script Info]
+ScriptType: v4.00+
+PlayResX: 576
+PlayResY: 1032
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Myanmar,Noto Sans Myanmar,28,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,1,2,20,20,40,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+                        def ass_time(seconds):
+                hours = int(seconds // 3600)
+                minutes = int((seconds % 3600) // 60)
+                secs = int(seconds % 60)
+                centiseconds = int((seconds % 1) * 100)
+
+                return (
+                    f"{hours}:{minutes:02d}:"
+                    f"{secs:02d}.{centiseconds:02d}"
+                )
+
+            for item in st.session_state["subtitle_data"]:
+
+                start = float(item["start"])
+                end = float(item["end"])
+                text = item["text"].strip()
+
+                text = text.replace("\n", "\\N")
+
+                ass_content += (
+                    f"Dialogue: 0,"
+                    f"{ass_time(start)},"
+                    f"{ass_time(end)},"
+                    f"Myanmar,,0,0,0,,"
+                    f"{text}\n"
+                )
+
+            with open(
+                "myanmar_subtitles.ass",
+                "w",
+                encoding="utf-8-sig"
+            ) as f:
+                f.write(ass_content)
 
             def srt_time(seconds):
                 hours = int(seconds // 3600)
@@ -580,8 +625,8 @@ if (
                     "original_movie.mp4",
                     "-i",
                     voice_file,
-                                        "-vf",
-                    "subtitles=myanmar_subtitles.srt:fontsdir=/usr/share/fonts/truetype/noto",
+                    "-vf",
+                    "ass=myanmar_subtitles.ass",
                     "-map",
                     "0:v:0",
                     "-map",
