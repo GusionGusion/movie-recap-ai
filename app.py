@@ -358,19 +358,21 @@ if "myanmar_recap" in st.session_state:
 
 st.divider()
 st.subheader("🎙️ Myanmar Female Voiceover")
-voice_speed = st.selectbox(
-    "🎙️ Voice Speed",
-    [1.0, 1.1, 1.2],
-    index=0
-)
 
 if "myanmar_recap" in st.session_state:
+
+    voice_speed = st.selectbox(
+        "🎙️ Voice Speed",
+        [1.0, 1.1, 1.2],
+        index=0
+    )
 
     if st.button("🎙️ Generate Myanmar Voiceover"):
 
         try:
             import edge_tts
             import asyncio
+            import subprocess
 
             text = st.session_state["myanmar_recap"]
 
@@ -384,33 +386,34 @@ if "myanmar_recap" in st.session_state:
                     "myanmar_voiceover.mp3"
                 )
 
-            
             asyncio.run(create_voice())
 
-voice_file = "myanmar_voiceover.mp3"
+            voice_file = "myanmar_voiceover.mp3"
 
-if voice_speed != 1.0:
+            if voice_speed != 1.0:
 
-    import subprocess
+                speed_file = (
+                    "myanmar_voiceover_speed.mp3"
+                )
 
-    speed_file = "myanmar_voiceover_speed.mp3"
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        voice_file,
+                        "-filter:a",
+                        f"atempo={voice_speed}",
+                        speed_file
+                    ],
+                    check=True
+                )
 
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-i",
-            voice_file,
-            "-filter:a",
-            f"atempo={voice_speed}",
-            speed_file
-        ],
-        check=True
-    )
+                voice_file = speed_file
 
-    voice_file = speed_file
-
-st.session_state["voiceover_file"] = voice_file
+            st.session_state["voiceover_file"] = (
+                voice_file
+            )
 
             st.success(
                 "✅ Myanmar Female Voiceover generated!"
