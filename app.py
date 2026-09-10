@@ -514,6 +514,68 @@ if "subtitle_data" in st.session_state:
         file_name="myanmar_subtitles.srt",
         mime="text/plain"
     )
+    st.divider()
+st.subheader("⏱️ Scene Timing")
+
+if "subtitle_data" in st.session_state:
+
+    video_duration = 0
+
+    if "uploaded_file" in st.session_state:
+        import cv2
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=".mp4"
+        ) as temp_video:
+
+            temp_video.write(
+                st.session_state["uploaded_file"]
+            )
+
+            temp_path = temp_video.name
+
+        cap = cv2.VideoCapture(temp_path)
+
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+
+        if fps:
+            video_duration = frame_count / fps
+
+        cap.release()
+
+    st.write(
+        f"🎬 Video Duration: {video_duration:.1f} seconds"
+    )
+
+    subtitle_data = st.session_state["subtitle_data"]
+
+    fixed_subtitles = []
+
+    for item in subtitle_data:
+
+        start = float(item["start"])
+        end = float(item["end"])
+
+        if start >= video_duration:
+            continue
+
+        end = min(end, video_duration)
+
+        if end > start:
+            fixed_subtitles.append({
+                "start": start,
+                "end": end,
+                "text": item["text"]
+            })
+
+    st.session_state["subtitle_data"] = fixed_subtitles
+
+    st.success(
+        f"✅ Timing fixed: {len(fixed_subtitles)} subtitles"
+    )
 st.divider()
 st.subheader("🎬 Final Video Export")
 
