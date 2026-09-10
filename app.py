@@ -581,7 +581,7 @@ if (
                     "-i",
                     voice_file,
                     "-vf",
-                    "subtitles=myanmar_subtitles.srt:force_style='FontName=Noto Sans Myanmar'",
+"subtitles=myanmar_subtitles.srt:force_style='FontName=Noto Sans Myanmar,FontSize=24'",
                     "-map",
                     "0:v:0",
                     "-map",
