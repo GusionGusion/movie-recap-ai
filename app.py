@@ -19,9 +19,31 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is not None:
-   st.session_state["uploaded_file"] = uploaded_file.getvalue() 
+
+    st.session_state["uploaded_file"] = uploaded_file.getvalue()
 
     file_size_mb = uploaded_file.size / (1024 * 1024)
+
+    video_bytes = uploaded_file.getvalue()
+
+    with tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=".mp4"
+    ) as temp_file:
+
+        temp_file.write(video_bytes)
+        video_path = temp_file.name
+
+    cap = cv2.VideoCapture(video_path)
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    duration = frame_count / fps if fps else 0
+
+    cap.release()
 
     suffix = os.path.splitext(uploaded_file.name)[1]
 
