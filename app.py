@@ -491,3 +491,104 @@ if "subtitle_data" in st.session_state:
         file_name="myanmar_subtitles.srt",
         mime="text/plain"
     )
+st.divider()
+st.subheader("🎬 Final Video Export")
+
+if (
+    "voiceover_file" in st.session_state
+    and "subtitle_data" in st.session_state
+    and "uploaded_file" in st.session_state
+):
+
+    if st.button("🎬 Create Final Recap Video"):
+
+        try:
+            import subprocess
+
+            video_file = st.session_state["uploaded_file"]
+
+            output_video = "final_movie_recap.mp4"
+            subtitle_file = "myanmar_subtitles.srt"
+
+            # Save uploaded video
+            with open("original_movie.mp4", "wb") as f:
+                f.write(video_file)
+
+            # Create SRT file
+            srt_content = ""
+
+            for i, item in enumerate(
+                st.session_state["subtitle_data"],
+                start=1
+            ):
+
+                start = float(item["start"])
+                end = float(item["end"])
+                text = item["text"].strip()
+
+                def srt_time(seconds):
+                    hours = int(seconds // 3600)
+                    minutes = int((seconds % 3600) // 60)
+                    secs = int(seconds % 60)
+                    millis = int((seconds % 1) * 1000)
+
+                    return (
+                        f"{hours:02d}:{minutes:02d}:"
+                        f"{secs:02d},{millis:03d}"
+                    )
+
+                srt_content += (
+                    f"{i}\n"
+                    f"{srt_time(start)} --> {srt_time(end)}\n"
+                    f"{text}\n\n"
+                )
+
+            with open(
+                subtitle_file,
+                "w",
+                encoding="utf-8"
+            ) as f:
+                f.write(srt_content)
+
+            # Add Myanmar voiceover
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    "original_movie.mp4",
+                    "-i",
+                    st.session_state["voiceover_file"],
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "1:a:0",
+                    "-c:v",
+                    "copy",
+                    "-c:a",
+                    "aac",
+                    "-shortest",
+                    output_video
+                ],
+                check=True
+            )
+
+            st.success("✅ Final video created!")
+
+            with open(
+                output_video,
+                "rb"
+            ) as f:
+
+                st.download_button(
+                    "📥 Download Final Recap Video",
+                    data=f,
+                    file_name="final_movie_recap.mp4",
+                    mime="video/mp4"
+                )
+
+        except Exception as e:
+
+            st.error(
+                f"❌ Final video export failed: {e}"
+            )
