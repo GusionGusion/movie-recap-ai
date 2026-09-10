@@ -585,7 +585,7 @@ if "subtitle_data" in st.session_state:
     st.success(
         f"✅ Timing fixed: {len(fixed_subtitles)} subtitles"
     )
-                )
+                
 st.divider()
 st.subheader("🎬 Final Video Export")
 
