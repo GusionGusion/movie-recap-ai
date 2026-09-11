@@ -686,7 +686,7 @@ if (
 
             # Save original video
             with open("original_movie.mp4", "wb") as f:
-    uploaded = st.session_state["uploaded_file"]
+        uploaded = st.session_state["uploaded_file"]
 
     if isinstance(uploaded, bytes):
         f.write(uploaded)
