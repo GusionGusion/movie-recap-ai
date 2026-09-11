@@ -686,17 +686,17 @@ if (
 
             # Save original video
             with open("original_movie.mp4", "wb") as f:
-        uploaded = st.session_state["uploaded_file"]
+                uploaded = st.session_state["uploaded_file"]
 
-    if isinstance(uploaded, bytes):
-        f.write(uploaded)
-    else:
-        f.write(uploaded.getbuffer())
+                if isinstance(uploaded, bytes):
+                    f.write(uploaded)
+                else:
+                    f.write(uploaded.getbuffer())
 
             voice_file = st.session_state["voiceover_file"]
 
             # -------------------------------------------------
-            # ASS subtitle helpers
+            # ASS subtitle time
             # -------------------------------------------------
 
             def ass_time(seconds):
@@ -714,13 +714,19 @@ if (
                     f"{centiseconds:02d}"
                 )
 
+            # -------------------------------------------------
+            # Myanmar subtitle wrapping
+            # -------------------------------------------------
+
             def wrap_myanmar(text, max_chars=24):
+
                 words = text.split()
 
                 lines = []
                 current = ""
 
                 for word in words:
+
                     test = (
                         word
                         if not current
@@ -729,7 +735,9 @@ if (
 
                     if len(test) <= max_chars:
                         current = test
+
                     else:
+
                         if current:
                             lines.append(current)
 
@@ -783,7 +791,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     max_chars=24
                 )
 
-                # ASS special characters
                 text = text.replace(
                     "{",
                     "\\{"
@@ -801,7 +808,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 )
 
             # -------------------------------------------------
-            # Save ASS subtitle file
+            # Save ASS file
             # -------------------------------------------------
 
             with open(
@@ -818,7 +825,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
             output_video = "final_movie_recap.mp4"
 
-            # Smooth center zoom
             zoom_filter = (
                 "scale=iw*1.10:ih*1.10,"
                 "crop=iw/1.10:ih/1.10:"
@@ -861,6 +867,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             )
 
             with open(output_video, "rb") as f:
+
                 st.download_button(
                     "⬇️ Download Final Video",
                     f,
@@ -874,6 +881,4 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 f"❌ Final Video Export Error: {e}"
             )
 
-                
-                
-
+                    
