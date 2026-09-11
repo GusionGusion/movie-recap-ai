@@ -759,7 +759,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 f.write(ass_content)
 
-                        output_video = (
+                output_video = (
                 "final_movie_recap.mp4"
             )
 
