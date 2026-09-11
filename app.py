@@ -707,14 +707,13 @@ if (
 
                 if isinstance(uploaded, bytes):
                     f.write(uploaded)
-
                 else:
                     f.write(uploaded.getbuffer())
 
             voice_file = st.session_state["voiceover_file"]
 
             # -----------------------------------------------
-            # Get video duration + FPS
+            # Get video duration
             # -----------------------------------------------
 
             probe = subprocess.run(
@@ -808,7 +807,7 @@ if (
                 return "\\N".join(lines)
 
             # -----------------------------------------------
-            # Build ASS subtitles
+            # ASS subtitle header
             # -----------------------------------------------
 
             ass_content = """[Script Info]
@@ -826,7 +825,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
             # -----------------------------------------------
-            # Subtitle timing with freeze compensation
+            # Subtitle timing compensation
             # -----------------------------------------------
 
             for item in st.session_state["subtitle_data"]:
@@ -839,33 +838,34 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     item["end"]
                 )
 
-                # Count freeze points before subtitle
-                freeze_count_start = int(
+                freeze_before_start = int(
                     original_start // interval
                 )
 
-                freeze_count_end = int(
+                freeze_before_end = int(
                     original_end // interval
                 )
 
                 new_start = (
                     original_start
-                    + freeze_count_start * freeze_time
+                    + freeze_before_start * freeze_time
+                    - 0.25
                 )
 
                 new_end = (
                     original_end
-                    + freeze_count_end * freeze_time
+                    + freeze_before_end * freeze_time
+                    - 0.25
                 )
 
                 new_start = max(
                     0,
-                    new_start - 0.25
+                    new_start
                 )
 
                 new_end = max(
                     new_start + 0.1,
-                    new_end - 0.25
+                    new_end
                 )
 
                 text = str(
@@ -894,7 +894,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 )
 
             # -----------------------------------------------
-            # Save ASS
+            # Save ASS subtitle
             # -----------------------------------------------
 
             with open(
@@ -906,8 +906,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 f.write(ass_content)
 
             # -----------------------------------------------
-            # Create freeze + zoom video
+            # Build video segments
             # -----------------------------------------------
+
+            filter_parts = []
+            labels = []
 
             if freeze_enabled:
 
@@ -918,48 +921,54 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     )
                 )
 
-                filter_parts = []
-                labels = []
-
                 for i in range(segment_count):
 
                     start = i * interval
+
                     end = min(
                         (i + 1) * interval,
                         video_duration
                     )
 
-                    label = f"seg{i}"
+                    # Normal segment
+                    normal_label = f"normal{i}"
 
-                    # Normal video segment
                     filter_parts.append(
                         f"[0:v]"
                         f"trim=start={start}:end={end},"
-                        f"setpts=PTS-STARTPTS"
-                        f"[{label}]"
+                        f"setpts=PTS-STARTPTS,"
+                        f"scale=576:1024"
+                        f"[{normal_label}]"
                     )
 
-                    # Freeze only when another segment exists
+                    labels.append(
+                        f"[{normal_label}]"
+                    )
+
+                    # Freeze only if this is NOT the last segment
                     if end < video_duration:
 
                         freeze_label = f"freeze{i}"
 
-                        # Take last frame
+                        frame_time = max(
+                            start,
+                            end - 0.05
+                        )
+
+                        # Take one frame near the 10-sec point
                         filter_parts.append(
-                            f"[{label}]"
-                            f"tpad="
-                            f"stop_mode=clone:"
-                            f"stop_duration={freeze_time},"
-                            f"fps=30,"
+                            f"[0:v]"
+                            f"trim=start={frame_time}:end={end},"
+                            f"setpts=PTS-STARTPTS,"
                             f"scale=iw*1.15:ih*1.15,"
                             f"zoompan="
                             f"z='if(lte(on,29),"
                             f"1+0.15*on/29,"
                             f"1.15-0.15*(on-29)/29)':"
-                            f"d=1:"
+                            f"d=60:"
                             f"x='iw/2-(iw/zoom/2)':"
                             f"y='ih/2-(ih/zoom/2)':"
-                            f"s=576x1032:"
+                            f"s=576x1024:"
                             f"fps=30"
                             f"[{freeze_label}]"
                         )
@@ -968,51 +977,42 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             f"[{freeze_label}]"
                         )
 
-                    else:
-
-                        # Last segment
-                        filter_parts.append(
-                            f"[{label}]"
-                            f"scale=576:1032"
-                            f"[last{i}]"
-                        )
-
-                        labels.append(
-                            f"[last{i}]"
-                        )
-
-                # -------------------------------------------
-                # Concat all segments
-                # -------------------------------------------
-
+                # Concat
                 concat_inputs = "".join(labels)
 
                 filter_parts.append(
                     f"{concat_inputs}"
                     f"concat=n={len(labels)}:"
-                    f"v=1:"
-                    f"a=0,"
-                    f"format=yuv420p,"
-                    f"ass=myanmar_subtitles.ass"
-                    f"[vout]"
-                )
-
-                filter_complex = ";".join(
-                    filter_parts
+                    f"v=1:a=0,"
+                    f"format=yuv420p"
+                    f"[basevideo]"
                 )
 
             else:
 
-                filter_complex = (
+                filter_parts.append(
                     "[0:v]"
-                    "scale=576:1032,"
-                    "format=yuv420p,"
-                    "ass=myanmar_subtitles.ass"
-                    "[vout]"
+                    "scale=576:1024,"
+                    "format=yuv420p"
+                    "[basevideo]"
                 )
 
             # -----------------------------------------------
-            # Final FFmpeg export
+            # Add subtitles AFTER concat
+            # -----------------------------------------------
+
+            filter_parts.append(
+                "[basevideo]"
+                "ass=myanmar_subtitles.ass"
+                "[vout]"
+            )
+
+            filter_complex = ";".join(
+                filter_parts
+            )
+
+            # -----------------------------------------------
+            # Final export
             # -----------------------------------------------
 
             output_video = (
@@ -1067,5 +1067,4 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
             st.error(
                 f"❌ Final Video Export Error: {e}"
-            )
- 
+            )    
