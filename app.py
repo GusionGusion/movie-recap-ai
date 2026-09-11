@@ -684,108 +684,18 @@ if (
         try:
             import subprocess
 
-            video_bytes = st.session_state["uploaded_file"]
+            # Save original video
+            with open("original_movie.mp4", "wb") as f:
+                f.write(st.session_state["uploaded_file"].getbuffer())
 
-            with open(
-                "original_movie.mp4",
-                "wb"
-            ) as f:
-                f.write(video_bytes)
+            voice_file = st.session_state["voiceover_file"]
 
-            voice_file = st.session_state[
-                "voiceover_file"
-            ]
-
-            ass_content = """[Script Info]
-ScriptType: v4.00+
-PlayResX: 576
-PlayResY: 1032
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Myanmar,Noto Sans Myanmar,28,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2,1,2,20,20,40,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-"""
+            # -------------------------------------------------
+            # ASS subtitle helpers
+            # -------------------------------------------------
 
             def ass_time(seconds):
-
-                hours = int(seconds // 3600)
-
-                minutes = int(
-                    (seconds % 3600) // 60
-                )
-
-                secs = int(seconds % 60)
-
-                centiseconds = int(
-                    (seconds % 1) * 100
-                )
-
-                return (
-                    f"{hours}:"
-                    f"{minutes:02d}:"
-                    f"{secs:02d}."
-                    f"{centiseconds:02d}"
-                )
-
-            for item in st.session_state[
-                "subtitle_data"
-            ]:
-
-                start = float(item["start"])
-                end = float(item["end"])
-                text = item["text"].strip()
-
-                text = text.replace(
-                    "\n",
-                    "\\N"
-                )
-
-                ass_content += (
-                    f"Dialogue: 0,"
-                    f"{ass_time(start)},"
-                    f"{ass_time(end)},"
-                    f"Myanmar,,0,0,0,,"
-                    f"{text}\n"
-                )
-
-            with open(
-                "myanmar_subtitles.ass",
-                "w",
-                encoding="utf-8-sig"
-            ) as f:
-
-                f.write(ass_content)
-
-                output_video = (
-                "final_movie_recap.mp4"
-            )
-
-            # 🎥 Keyframe Zoom In / Zoom Out
-            # Smooth center zoom effect
-            zoom_filter = (
-                "scale=iw*1.10:ih*1.10,"
-                "crop=iw/1.10:ih/1.10:"
-                "(iw-iw/1.10)/2:"
-                "(ih-ih/1.10)/2,"
-                "scale=576:1032"
-            )
-
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-i",
-                    "original_movie.mp4",
-                    "-i",
-                    voice_file,
-            [Events]
-            Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-            
-
-            def ass_time(seconds):
+                seconds = max(0, float(seconds))
 
                 hours = int(seconds // 3600)
                 minutes = int((seconds % 3600) // 60)
@@ -799,21 +709,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     f"{centiseconds:02d}"
                 )
 
-            # 📝 Myanmar subtitle auto line wrapping
             def wrap_myanmar(text, max_chars=24):
-
-                text = " ".join(text.split())
-
-                if len(text) <= max_chars:
-                    return text
-
                 words = text.split()
 
                 lines = []
                 current = ""
 
                 for word in words:
-
                     test = (
                         word
                         if not current
@@ -822,7 +724,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                     if len(test) <= max_chars:
                         current = test
-
                     else:
                         if current:
                             lines.append(current)
@@ -833,69 +734,45 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     lines.append(current)
 
                 # Maximum 3 lines
-                if len(lines) <= 3:
-                    return "\\N".join(lines)
+                if len(lines) > 3:
+                    lines = lines[:3]
 
-                # Re-balance long subtitles into 3 lines
-                all_text = " ".join(words)
+                return "\\N".join(lines)
 
-                target = max(1, len(all_text) // 3)
+            # -------------------------------------------------
+            # ASS subtitle header
+            # -------------------------------------------------
 
-                balanced = []
-                current = ""
+            ass_content = """[Script Info]
+ScriptType: v4.00+
+PlayResX: 576
+PlayResY: 1032
+ScaledBorderAndShadow: yes
 
-                for word in words:
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Myanmar,Noto Sans Myanmar,28,&H00FFFFFF,&H00FFFFFF,&H00000000,&H99000000,0,0,0,0,100,100,0,0,1,2,1,2,40,40,55,1
 
-                    test = (
-                        word
-                        if not current
-                        else current + " " + word
-                    )
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
 
-                    if (
-                        len(test) <= target
-                        and len(balanced) < 2
-                    ):
-                        current = test
+            # -------------------------------------------------
+            # Add subtitles
+            # -------------------------------------------------
 
-                    else:
-                        if current:
-                            balanced.append(current)
-
-                        current = word
-
-                if current:
-                    balanced.append(current)
-
-                return "\\N".join(
-                    balanced[:3]
-                )
-
-
-            # ⏱️ Subtitle timing correction
             subtitle_lead = 0.25
 
-            for item in st.session_state[
-                "subtitle_data"
-            ]:
+            for item in st.session_state["subtitle_data"]:
 
-                start = float(item["start"])
-                end = float(item["end"])
+                start = float(item["start"]) - subtitle_lead
+                end = float(item["end"]) - subtitle_lead
 
-                # Move subtitle slightly earlier
-                start = max(
-                    0,
-                    start - subtitle_lead
-                )
+                start = max(0, start)
+                end = max(start + 0.1, end)
 
-                end = max(
-                    start + 0.3,
-                    end - subtitle_lead
-                )
+                text = str(item["text"]).strip()
 
-                text = item["text"].strip()
-
-                # Auto 1 / 2 / 3 lines
                 text = wrap_myanmar(
                     text,
                     max_chars=24
@@ -905,9 +782,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 text = text.replace(
                     "{",
                     "\\{"
-                )
-
-                text = text.replace(
+                ).replace(
                     "}",
                     "\\}"
                 )
@@ -920,6 +795,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     f"{text}\n"
                 )
 
+            # -------------------------------------------------
+            # Save ASS subtitle file
+            # -------------------------------------------------
 
             with open(
                 "myanmar_subtitles.ass",
@@ -929,75 +807,68 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 f.write(ass_content)
 
+            # -------------------------------------------------
+            # Final video
+            # -------------------------------------------------
 
-            output_video = (
-                "final_movie_recap.mp4"
+            output_video = "final_movie_recap.mp4"
+
+            # Smooth center zoom
+            zoom_filter = (
+                "scale=iw*1.10:ih*1.10,"
+                "crop=iw/1.10:ih/1.10:"
+                "(iw-iw/1.10)/2:"
+                "(ih-ih/1.10)/2,"
+                "scale=576:1032,"
+                "ass=myanmar_subtitles.ass"
             )
 
-
-            # 🎬 Final video export
             subprocess.run(
                 [
                     "ffmpeg",
                     "-y",
-
                     "-i",
                     "original_movie.mp4",
-
                     "-i",
                     voice_file,
-
                     "-vf",
-                    "ass=myanmar_subtitles.ass",
-
+                    zoom_filter,
                     "-map",
                     "0:v:0",
-
                     "-map",
                     "1:a:0",
-
                     "-c:v",
                     "libx264",
-
                     "-preset",
                     "veryfast",
-
                     "-crf",
                     "23",
-
                     "-c:a",
                     "aac",
-
                     "-shortest",
-
                     output_video
                 ],
                 check=True
             )
 
-
             st.success(
-                "✅ Final video created!"
+                "✅ Final Recap Video Created Successfully!"
             )
 
-
-            with open(
-                output_video,
-                "rb"
-            ) as f:
-
+            with open(output_video, "rb") as f:
                 st.download_button(
-                    "📥 Download Final Recap Video",
-                    data=f.read(),
-                    file_name=(
-                        "final_movie_recap.mp4"
-                    ),
+                    "⬇️ Download Final Video",
+                    f,
+                    file_name="final_movie_recap.mp4",
                     mime="video/mp4"
                 )
-
 
         except Exception as e:
 
             st.error(
-                f"❌ Final video export failed: {e}"
+                f"❌ Final Video Export Error: {e}"
             )
+
+                
+                
+
