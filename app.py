@@ -629,7 +629,47 @@ freeze_max = st.slider(
     5.0,
     2.0,
     0.5
-)                
+) 
+st.divider()
+st.subheader("⏱️ Voiceover Timing")
+
+if "voiceover_file" in st.session_state:
+
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                st.session_state["voiceover_file"]
+            ],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+
+        voice_duration = float(
+            result.stdout.strip()
+        )
+
+        st.session_state["voice_duration"] = voice_duration
+
+        st.write(
+            f"🎙️ Voiceover Duration: "
+            f"{voice_duration:.1f} seconds"
+        )
+
+    except Exception as e:
+
+        st.warning(
+            f"⚠️ Could not read voice duration: {e}"
+        )
 st.divider()
 st.subheader("🎬 Final Video Export")
 
