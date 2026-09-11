@@ -713,7 +713,7 @@ if (
             voice_file = st.session_state["voiceover_file"]
 
             # -----------------------------------------------
-            # Get video duration
+            # Get original video duration
             # -----------------------------------------------
 
             probe = subprocess.run(
@@ -751,16 +751,28 @@ if (
                 freeze_time = 0
 
             # -----------------------------------------------
-            # ASS subtitle helpers
+            # ASS time helper
             # -----------------------------------------------
 
             def ass_time(seconds):
 
-                seconds = max(0, float(seconds))
+                seconds = max(
+                    0,
+                    float(seconds)
+                )
 
-                hours = int(seconds // 3600)
-                minutes = int((seconds % 3600) // 60)
-                secs = int(seconds % 60)
+                hours = int(
+                    seconds // 3600
+                )
+
+                minutes = int(
+                    (seconds % 3600) // 60
+                )
+
+                secs = int(
+                    seconds % 60
+                )
+
                 centiseconds = int(
                     (seconds % 1) * 100
                 )
@@ -772,7 +784,14 @@ if (
                     f"{centiseconds:02d}"
                 )
 
-            def wrap_myanmar(text, max_chars=24):
+            # -----------------------------------------------
+            # Myanmar subtitle wrapping
+            # -----------------------------------------------
+
+            def wrap_myanmar(
+                text,
+                max_chars=24
+            ):
 
                 words = text.split()
 
@@ -794,12 +813,16 @@ if (
                     else:
 
                         if current:
-                            lines.append(current)
+                            lines.append(
+                                current
+                            )
 
                         current = word
 
                 if current:
-                    lines.append(current)
+                    lines.append(
+                        current
+                    )
 
                 if len(lines) > 3:
                     lines = lines[:3]
@@ -807,13 +830,13 @@ if (
                 return "\\N".join(lines)
 
             # -----------------------------------------------
-            # ASS subtitle header
+            # ASS subtitle file
             # -----------------------------------------------
 
             ass_content = """[Script Info]
 ScriptType: v4.00+
 PlayResX: 576
-PlayResY: 1032
+PlayResY: 1024
 ScaledBorderAndShadow: yes
 
 [V4+ Styles]
@@ -838,23 +861,32 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     item["end"]
                 )
 
-                freeze_before_start = int(
-                    original_start // interval
-                )
+                if freeze_enabled:
 
-                freeze_before_end = int(
-                    original_end // interval
-                )
+                    freezes_before_start = int(
+                        original_start // interval
+                    )
+
+                    freezes_before_end = int(
+                        original_end // interval
+                    )
+
+                else:
+
+                    freezes_before_start = 0
+                    freezes_before_end = 0
 
                 new_start = (
                     original_start
-                    + freeze_before_start * freeze_time
+                    + freezes_before_start
+                    * freeze_time
                     - 0.25
                 )
 
                 new_end = (
                     original_end
-                    + freeze_before_end * freeze_time
+                    + freezes_before_end
+                    * freeze_time
                     - 0.25
                 )
 
@@ -903,10 +935,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 encoding="utf-8-sig"
             ) as f:
 
-                f.write(ass_content)
+                f.write(
+                    ass_content
+                )
 
             # -----------------------------------------------
-            # Build video segments
+            # Build video filter
             # -----------------------------------------------
 
             filter_parts = []
@@ -921,23 +955,33 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     )
                 )
 
-                for i in range(segment_count):
+                for i in range(
+                    segment_count
+                ):
 
-                    start = i * interval
+                    start = (
+                        i * interval
+                    )
 
                     end = min(
                         (i + 1) * interval,
                         video_duration
                     )
 
-                    # Normal segment
-                    normal_label = f"normal{i}"
+                    # ---------------------------------------
+                    # Normal video segment
+                    # ---------------------------------------
+
+                    normal_label = (
+                        f"normal{i}"
+                    )
 
                     filter_parts.append(
                         f"[0:v]"
                         f"trim=start={start}:end={end},"
                         f"setpts=PTS-STARTPTS,"
-                        f"scale=576:1024"
+                        f"scale=576:1024,"
+                        f"setsar=1"
                         f"[{normal_label}]"
                     )
 
@@ -945,22 +989,30 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         f"[{normal_label}]"
                     )
 
-                    # Freeze only if this is NOT the last segment
+                    # ---------------------------------------
+                    # Freeze frame
+                    # ---------------------------------------
+
                     if end < video_duration:
 
-                        freeze_label = f"freeze{i}"
+                        freeze_label = (
+                            f"freeze{i}"
+                        )
 
                         frame_time = max(
                             start,
-                            end - 0.05
+                            end - 0.10
                         )
 
-                        # Take one frame near the 10-sec point
+                        # Select ONE frame
                         filter_parts.append(
                             f"[0:v]"
-                            f"trim=start={frame_time}:end={end},"
+                            f"trim=start={frame_time}:"
+                            f"end={frame_time + 0.0334},"
                             f"setpts=PTS-STARTPTS,"
-                            f"scale=iw*1.15:ih*1.15,"
+                            f"select='eq(n,0)',"
+                            f"scale=576:1024,"
+                            f"setsar=1,"
                             f"zoompan="
                             f"z='if(lte(on,29),"
                             f"1+0.15*on/29,"
@@ -977,13 +1029,19 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             f"[{freeze_label}]"
                         )
 
-                # Concat
-                concat_inputs = "".join(labels)
+                # -------------------------------------------
+                # Concatenate
+                # -------------------------------------------
+
+                concat_inputs = "".join(
+                    labels
+                )
 
                 filter_parts.append(
                     f"{concat_inputs}"
                     f"concat=n={len(labels)}:"
-                    f"v=1:a=0,"
+                    f"v=1:a=0:"
+                    f"unsafe=1,"
                     f"format=yuv420p"
                     f"[basevideo]"
                 )
@@ -993,12 +1051,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 filter_parts.append(
                     "[0:v]"
                     "scale=576:1024,"
+                    "setsar=1,"
                     "format=yuv420p"
                     "[basevideo]"
                 )
 
             # -----------------------------------------------
-            # Add subtitles AFTER concat
+            # Burn subtitles AFTER freeze processing
             # -----------------------------------------------
 
             filter_parts.append(
@@ -1012,40 +1071,71 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             )
 
             # -----------------------------------------------
-            # Final export
+            # Export
             # -----------------------------------------------
 
             output_video = (
                 "final_movie_recap.mp4"
             )
 
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-i",
-                    "original_movie.mp4",
-                    "-i",
-                    voice_file,
-                    "-filter_complex",
-                    filter_complex,
-                    "-map",
-                    "[vout]",
-                    "-map",
-                    "1:a:0",
-                    "-c:v",
-                    "libx264",
-                    "-preset",
-                    "veryfast",
-                    "-crf",
-                    "23",
-                    "-c:a",
-                    "aac",
-                    "-shortest",
-                    output_video
-                ],
-                check=True
+            ffmpeg_command = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                "original_movie.mp4",
+                "-i",
+                voice_file,
+                "-filter_complex",
+                filter_complex,
+                "-map",
+                "[vout]",
+                "-map",
+                "1:a:0",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "23",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-shortest",
+                output_video
+            ]
+
+            # -----------------------------------------------
+            # Run FFmpeg
+            # -----------------------------------------------
+
+            result = subprocess.run(
+                ffmpeg_command,
+                capture_output=True,
+                text=True
             )
+
+            if result.returncode != 0:
+
+                st.error(
+                    "❌ FFmpeg Export Failed"
+                )
+
+                st.code(
+                    result.stderr[-5000:],
+                    language="text"
+                )
+
+                raise RuntimeError(
+                    "FFmpeg failed. "
+                    "See detailed error above."
+                )
+
+            # -----------------------------------------------
+            # Success
+            # -----------------------------------------------
 
             st.success(
                 "✅ Final Recap Video Created Successfully!"
@@ -1059,7 +1149,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 st.download_button(
                     "⬇️ Download Final Video",
                     f,
-                    file_name="final_movie_recap.mp4",
+                    file_name=(
+                        "final_movie_recap.mp4"
+                    ),
                     mime="video/mp4"
                 )
 
@@ -1067,4 +1159,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
             st.error(
                 f"❌ Final Video Export Error: {e}"
-            )    
+            )
+
+                                                        filter_parts.append(
+                
