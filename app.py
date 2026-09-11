@@ -695,29 +695,76 @@ if (
 
         try:
             import subprocess
+            import math
 
+            # -----------------------------------------------
             # Save original video
+            # -----------------------------------------------
+
             with open("original_movie.mp4", "wb") as f:
+
                 uploaded = st.session_state["uploaded_file"]
 
                 if isinstance(uploaded, bytes):
                     f.write(uploaded)
+
                 else:
                     f.write(uploaded.getbuffer())
 
             voice_file = st.session_state["voiceover_file"]
 
-            # -------------------------------------------------
-            # ASS subtitle time
-            # -------------------------------------------------
+            # -----------------------------------------------
+            # Get video duration + FPS
+            # -----------------------------------------------
+
+            probe = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    "original_movie.mp4"
+                ],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+
+            video_duration = float(
+                probe.stdout.strip()
+            )
+
+            # -----------------------------------------------
+            # Freeze settings
+            # -----------------------------------------------
+
+            if freeze_enabled:
+
+                interval = float(freeze_interval)
+                freeze_time = float(freeze_duration)
+
+            else:
+
+                interval = video_duration + 1
+                freeze_time = 0
+
+            # -----------------------------------------------
+            # ASS subtitle helpers
+            # -----------------------------------------------
 
             def ass_time(seconds):
+
                 seconds = max(0, float(seconds))
 
                 hours = int(seconds // 3600)
                 minutes = int((seconds % 3600) // 60)
                 secs = int(seconds % 60)
-                centiseconds = int((seconds % 1) * 100)
+                centiseconds = int(
+                    (seconds % 1) * 100
+                )
 
                 return (
                     f"{hours}:"
@@ -725,10 +772,6 @@ if (
                     f"{secs:02d}."
                     f"{centiseconds:02d}"
                 )
-
-            # -------------------------------------------------
-            # Myanmar subtitle wrapping
-            # -------------------------------------------------
 
             def wrap_myanmar(text, max_chars=24):
 
@@ -746,6 +789,7 @@ if (
                     )
 
                     if len(test) <= max_chars:
+
                         current = test
 
                     else:
@@ -758,15 +802,14 @@ if (
                 if current:
                     lines.append(current)
 
-                # Maximum 3 lines
                 if len(lines) > 3:
                     lines = lines[:3]
 
                 return "\\N".join(lines)
 
-            # -------------------------------------------------
-            # ASS subtitle header
-            # -------------------------------------------------
+            # -----------------------------------------------
+            # Build ASS subtitles
+            # -----------------------------------------------
 
             ass_content = """[Script Info]
 ScriptType: v4.00+
@@ -782,25 +825,56 @@ Style: Myanmar,Noto Sans Myanmar,28,&H00FFFFFF,&H00FFFFFF,&H00000000,&H99000000,
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
-            # -------------------------------------------------
-            # Add subtitles
-            # -------------------------------------------------
-
-            subtitle_lead = 0.25
+            # -----------------------------------------------
+            # Subtitle timing with freeze compensation
+            # -----------------------------------------------
 
             for item in st.session_state["subtitle_data"]:
 
-                start = float(item["start"]) - subtitle_lead
-                end = float(item["end"]) - subtitle_lead
+                original_start = float(
+                    item["start"]
+                )
 
-                start = max(0, start)
-                end = max(start + 0.1, end)
+                original_end = float(
+                    item["end"]
+                )
 
-                text = str(item["text"]).strip()
+                # Count freeze points before subtitle
+                freeze_count_start = int(
+                    original_start // interval
+                )
+
+                freeze_count_end = int(
+                    original_end // interval
+                )
+
+                new_start = (
+                    original_start
+                    + freeze_count_start * freeze_time
+                )
+
+                new_end = (
+                    original_end
+                    + freeze_count_end * freeze_time
+                )
+
+                new_start = max(
+                    0,
+                    new_start - 0.25
+                )
+
+                new_end = max(
+                    new_start + 0.1,
+                    new_end - 0.25
+                )
+
+                text = str(
+                    item["text"]
+                ).strip()
 
                 text = wrap_myanmar(
                     text,
-                    max_chars=24
+                    24
                 )
 
                 text = text.replace(
@@ -813,15 +887,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 ass_content += (
                     f"Dialogue: 0,"
-                    f"{ass_time(start)},"
-                    f"{ass_time(end)},"
+                    f"{ass_time(new_start)},"
+                    f"{ass_time(new_end)},"
                     f"Myanmar,,0,0,0,,"
                     f"{text}\n"
                 )
 
-            # -------------------------------------------------
-            # Save ASS file
-            # -------------------------------------------------
+            # -----------------------------------------------
+            # Save ASS
+            # -----------------------------------------------
 
             with open(
                 "myanmar_subtitles.ass",
@@ -831,19 +905,118 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 f.write(ass_content)
 
-            # -------------------------------------------------
-            # Final video
-            # -------------------------------------------------
+            # -----------------------------------------------
+            # Create freeze + zoom video
+            # -----------------------------------------------
 
-            output_video = "final_movie_recap.mp4"
+            if freeze_enabled:
 
-            zoom_filter = (
-                "scale=iw*1.10:ih*1.10,"
-                "crop=iw/1.10:ih/1.10:"
-                "(iw-iw/1.10)/2:"
-                "(ih-ih/1.10)/2,"
-                "scale=576:1032,"
-                "ass=myanmar_subtitles.ass"
+                segment_count = int(
+                    math.ceil(
+                        video_duration /
+                        interval
+                    )
+                )
+
+                filter_parts = []
+                labels = []
+
+                for i in range(segment_count):
+
+                    start = i * interval
+                    end = min(
+                        (i + 1) * interval,
+                        video_duration
+                    )
+
+                    label = f"seg{i}"
+
+                    # Normal video segment
+                    filter_parts.append(
+                        f"[0:v]"
+                        f"trim=start={start}:end={end},"
+                        f"setpts=PTS-STARTPTS"
+                        f"[{label}]"
+                    )
+
+                    # Freeze only when another segment exists
+                    if end < video_duration:
+
+                        freeze_label = f"freeze{i}"
+
+                        # Take last frame
+                        filter_parts.append(
+                            f"[{label}]"
+                            f"tpad="
+                            f"stop_mode=clone:"
+                            f"stop_duration={freeze_time},"
+                            f"fps=30,"
+                            f"scale=iw*1.15:ih*1.15,"
+                            f"zoompan="
+                            f"z='if(lte(on,29),"
+                            f"1+0.15*on/29,"
+                            f"1.15-0.15*(on-29)/29)':"
+                            f"d=1:"
+                            f"x='iw/2-(iw/zoom/2)':"
+                            f"y='ih/2-(ih/zoom/2)':"
+                            f"s=576x1032:"
+                            f"fps=30"
+                            f"[{freeze_label}]"
+                        )
+
+                        labels.append(
+                            f"[{freeze_label}]"
+                        )
+
+                    else:
+
+                        # Last segment
+                        filter_parts.append(
+                            f"[{label}]"
+                            f"scale=576:1032"
+                            f"[last{i}]"
+                        )
+
+                        labels.append(
+                            f"[last{i}]"
+                        )
+
+                # -------------------------------------------
+                # Concat all segments
+                # -------------------------------------------
+
+                concat_inputs = "".join(labels)
+
+                filter_parts.append(
+                    f"{concat_inputs}"
+                    f"concat=n={len(labels)}:"
+                    f"v=1:"
+                    f"a=0,"
+                    f"format=yuv420p,"
+                    f"ass=myanmar_subtitles.ass"
+                    f"[vout]"
+                )
+
+                filter_complex = ";".join(
+                    filter_parts
+                )
+
+            else:
+
+                filter_complex = (
+                    "[0:v]"
+                    "scale=576:1032,"
+                    "format=yuv420p,"
+                    "ass=myanmar_subtitles.ass"
+                    "[vout]"
+                )
+
+            # -----------------------------------------------
+            # Final FFmpeg export
+            # -----------------------------------------------
+
+            output_video = (
+                "final_movie_recap.mp4"
             )
 
             subprocess.run(
@@ -854,10 +1027,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     "original_movie.mp4",
                     "-i",
                     voice_file,
-                    "-vf",
-                    zoom_filter,
+                    "-filter_complex",
+                    filter_complex,
                     "-map",
-                    "0:v:0",
+                    "[vout]",
                     "-map",
                     "1:a:0",
                     "-c:v",
@@ -878,7 +1051,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 "✅ Final Recap Video Created Successfully!"
             )
 
-            with open(output_video, "rb") as f:
+            with open(
+                output_video,
+                "rb"
+            ) as f:
 
                 st.download_button(
                     "⬇️ Download Final Video",
@@ -892,5 +1068,4 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             st.error(
                 f"❌ Final Video Export Error: {e}"
             )
-
-                    
+ 
