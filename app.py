@@ -615,7 +615,21 @@ if "subtitle_data" in st.session_state:
     st.success(
         f"✅ Timing fixed: {len(fixed_subtitles)} subtitles"
     )
-                
+st.divider()
+st.subheader("🧊 Freeze Frame")
+
+freeze_enabled = st.checkbox(
+    "Enable Freeze Frame",
+    value=True
+)
+
+freeze_max = st.slider(
+    "Maximum Freeze Duration",
+    0.0,
+    5.0,
+    2.0,
+    0.5
+)                
 st.divider()
 st.subheader("🎬 Final Video Export")
 
