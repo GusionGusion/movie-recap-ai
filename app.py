@@ -686,7 +686,12 @@ if (
 
             # Save original video
             with open("original_movie.mp4", "wb") as f:
-                f.write(st.session_state["uploaded_file"].getbuffer())
+    uploaded = st.session_state["uploaded_file"]
+
+    if isinstance(uploaded, bytes):
+        f.write(uploaded)
+    else:
+        f.write(uploaded.getbuffer())
 
             voice_file = st.session_state["voiceover_file"]
 
