@@ -783,7 +783,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     voice_file,
             [Events]
             Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-            """
+            
 
             def ass_time(seconds):
 
