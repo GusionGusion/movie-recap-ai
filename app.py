@@ -616,20 +616,32 @@ if "subtitle_data" in st.session_state:
         f"✅ Timing fixed: {len(fixed_subtitles)} subtitles"
     )
 st.divider()
-st.subheader("🧊 Freeze Frame")
+st.subheader("🧊 Freeze Frame + Zoom")
 
 freeze_enabled = st.checkbox(
-    "Enable Freeze Frame",
+    "Enable Freeze Frame + Zoom",
     value=True
 )
 
-freeze_max = st.slider(
-    "Maximum Freeze Duration",
-    0.0,
-    5.0,
-    2.0,
-    0.5
-) 
+freeze_interval = st.number_input(
+    "⏱️ Freeze Every",
+    min_value=5.0,
+    max_value=60.0,
+    value=10.0,
+    step=1.0
+)
+
+freeze_duration = st.number_input(
+    "🧊 Freeze Duration",
+    min_value=0.5,
+    max_value=5.0,
+    value=2.0,
+    step=0.5
+)
+
+st.caption(
+    "Every 10 seconds → 2 seconds Freeze + Zoom In → Zoom Out"
+)
 st.divider()
 st.subheader("⏱️ Voiceover Timing")
 
