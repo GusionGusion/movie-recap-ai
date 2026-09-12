@@ -4,4 +4,4 @@ opencv-python-headless
 openai-whisper
 edge-tts
 Pillow
-streamlit-cropper
+streamlit-drawable-canvas==0.13.0
