@@ -395,6 +395,109 @@ if uploaded_file is not None:
 
 
 # =========================================================
+# ONE CLICK RECAP SETTINGS
+# =========================================================
+
+st.subheader(
+    "⚙️ Recap Settings"
+)
+
+settings_col1, settings_col2 = st.columns(2)
+
+
+with settings_col1:
+
+    whisper_model = st.selectbox(
+        "🧠 Whisper Model",
+        ["tiny", "base"],
+        index=0,
+        help=(
+            "Tiny uses much less CPU/RAM. "
+            "Base may provide better English transcription."
+        ),
+        key="main_whisper_model"
+    )
+
+    voice_gender = st.selectbox(
+        "🎙️ Voice",
+        [
+            "👩 Female — Nilar",
+            "👨 Male — Thiha"
+        ],
+        key="main_voice_gender"
+    )
+
+    voice_speed = st.selectbox(
+        "🎚️ Voice Speed",
+        [1.0, 1.1, 1.2],
+        index=0,
+        key="main_voice_speed"
+    )
+
+
+with settings_col2:
+
+    freeze_enabled = st.checkbox(
+        "🧊 Enable Freeze Frame + Zoom",
+        value=True,
+        key="main_freeze_enabled"
+    )
+
+    freeze_interval = st.number_input(
+        "⏱️ Freeze Every",
+        min_value=5.0,
+        max_value=60.0,
+        value=10.0,
+        step=1.0,
+        key="main_freeze_interval"
+    )
+
+    freeze_duration = st.number_input(
+        "🧊 Freeze Duration",
+        min_value=0.5,
+        max_value=5.0,
+        value=2.0,
+        step=0.5,
+        key="main_freeze_duration"
+    )
+
+
+st.caption(
+    "⚙️ Set your preferred settings first, "
+    "then press One Click."
+)
+
+st.divider()
+
+
+# =========================================================
+# ONE CLICK BUTTON
+# =========================================================
+
+run_all = False
+
+if uploaded_file is not None:
+
+    st.markdown(
+        "### 🎬 Ready to Generate"
+    )
+
+    run_all = st.button(
+        "🎬 ONE CLICK — GENERATE MOVIE RECAP",
+        type="primary",
+        use_container_width=True
+    )
+
+    if run_all:
+
+        st.success(
+            "🚀 One Click Recap started!"
+        )
+
+st.divider()
+
+
+# =========================================================
 # MOVIE TRANSCRIPT
 # =========================================================
 
@@ -405,19 +508,9 @@ st.subheader(
 
 if uploaded_file is not None:
 
-    whisper_model = st.selectbox(
-        "🧠 Whisper Model",
-        ["tiny", "base"],
-        index=0,
-        help=(
-            "Tiny uses much less CPU/RAM. "
-            "Base may provide better English transcription."
-        )
-    )
-
     if st.button(
         "📝 Generate Transcript"
-    ):
+    ) or run_all:
 
         st.info(
             f"⏳ Transcribing with Whisper {whisper_model}..."
@@ -482,7 +575,7 @@ if "transcript_result" in st.session_state:
 
     if st.button(
         "🎞️ Analyze Scenes"
-    ):
+    ) or run_all:
 
         segments = (
             st.session_state[
@@ -552,7 +645,7 @@ if "transcript" in st.session_state:
 
     if st.button(
         "🤖 Analyze with Gemini"
-    ):
+    ) or run_all:
 
         try:
 
@@ -644,7 +737,7 @@ if "ai_scene_analysis" in st.session_state:
 
     if st.button(
         "🎬 Generate Recap Script"
-    ):
+    ) or run_all:
 
         try:
 
@@ -731,7 +824,7 @@ if "recap_script" in st.session_state:
 
     if st.button(
         "🇲🇲 Translate to Myanmar"
-    ):
+    ) or run_all:
 
         try:
 
@@ -805,15 +898,6 @@ st.divider()
 
 # =========================================================
 # MYANMAR VOICEOVER
-#
-# ONLY THIS SECTION WAS CHANGED
-#
-# Changes:
-# - Keep Nilar / Thiha
-# - Use Edge-TTS native rate
-# - Keep 1.0x / 1.1x / 1.2x
-# - Use actual MP3 duration for subtitles
-# - No extra FFmpeg speed conversion
 # =========================================================
 
 st.subheader(
@@ -824,17 +908,8 @@ st.subheader(
 if "myanmar_recap" in st.session_state:
 
     # =====================================================
-    # VOICE SELECTION
+    # SELECT VOICE FROM MAIN SETTINGS
     # =====================================================
-
-    voice_gender = st.selectbox(
-        "🎙️ Select Voice",
-        [
-            "👩 Female — Nilar",
-            "👨 Male — Thiha"
-        ],
-        key="voice_gender"
-    )
 
     if voice_gender.startswith("👩"):
 
@@ -849,17 +924,9 @@ if "myanmar_recap" in st.session_state:
         )
 
     # =====================================================
-    # VOICE SPEED
+    # EDGE-TTS RATE
     # =====================================================
 
-    voice_speed = st.selectbox(
-        "🎙️ Voice Speed",
-        [1.0, 1.1, 1.2],
-        index=0,
-        key="voice_speed_select"
-    )
-
-    # Convert app speed to Edge-TTS rate
     if float(voice_speed) == 1.0:
 
         tts_rate = "+0%"
@@ -884,7 +951,7 @@ if "myanmar_recap" in st.session_state:
 
     if st.button(
         "🎙️ Generate Myanmar Voiceover"
-    ):
+    ) or run_all:
 
         try:
 
@@ -946,8 +1013,6 @@ if "myanmar_recap" in st.session_state:
 
             # =============================================
             # TTS generation
-            #
-            # Edge-TTS native rate is used.
             # =============================================
 
             async def create_all_tts():
@@ -1076,9 +1141,6 @@ if "myanmar_recap" in st.session_state:
 
             # =============================================
             # Final voice file
-            #
-            # Speed is already applied by Edge-TTS.
-            # Do NOT run atempo again.
             # =============================================
 
             final_voice_file = os.path.join(
@@ -1101,7 +1163,6 @@ if "myanmar_recap" in st.session_state:
 
             # =============================================
             # Calculate subtitle timing
-            # from actual generated TTS segments
             # =============================================
 
             subtitle_data = []
@@ -1123,7 +1184,6 @@ if "myanmar_recap" in st.session_state:
 
                 timing_scale = 1.0
 
-            # Small correction only
             timing_scale = max(
                 0.98,
                 min(
@@ -1541,35 +1601,27 @@ st.subheader(
     "🧊 Freeze Frame + Zoom"
 )
 
-
-freeze_enabled = st.checkbox(
-    "Enable Freeze Frame + Zoom",
-    value=True
+st.write(
+    f"Status: "
+    f"{'ON' if freeze_enabled else 'OFF'}"
 )
 
+if freeze_enabled:
 
-freeze_interval = st.number_input(
-    "⏱️ Freeze Every",
-    min_value=5.0,
-    max_value=60.0,
-    value=10.0,
-    step=1.0
-)
+    st.write(
+        f"⏱️ Freeze Every: "
+        f"{freeze_interval:.1f} seconds"
+    )
 
+    st.write(
+        f"🧊 Freeze Duration: "
+        f"{freeze_duration:.1f} seconds"
+    )
 
-freeze_duration = st.number_input(
-    "🧊 Freeze Duration",
-    min_value=0.5,
-    max_value=5.0,
-    value=2.0,
-    step=0.5
-)
-
-
-st.caption(
-    "Every 10 seconds → "
-    "2 seconds Freeze + Zoom In → Zoom Out"
-)
+    st.caption(
+        "Every selected interval → "
+        "Freeze + Zoom In → Zoom Out"
+    )
 
 
 st.divider()
@@ -1592,7 +1644,7 @@ if (
 
     if st.button(
         "🎬 Create Final Recap Video"
-    ):
+    ) or run_all:
 
         try:
 
@@ -1972,7 +2024,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 "-map",
                 "1:a:0",
 
-                # CPU optimized encoder
                 "-c:v",
                 "libx264",
 
