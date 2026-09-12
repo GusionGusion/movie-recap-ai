@@ -5,6 +5,7 @@ import cv2
 import tempfile
 import subprocess
 import math
+import asyncio
 import json
 import re
 import shutil
