@@ -757,7 +757,7 @@ Rules:
 - Preserve the original meaning exactly.
 - Do not add or remove story events.
 - Use natural spoken Myanmar Burmese.
-- Make it suitable for female voiceover.
+- Make it suitable for natural Myanmar voiceover.
 - Keep chronological order.
 - Do not include English.
 - Write only the Myanmar narration.
@@ -804,7 +804,7 @@ st.divider()
 
 
 # =========================================================
-# MYANMAR FEMALE VOICEOVER
+# MYANMAR VOICEOVER
 #
 # CPU OPTIMIZED VERSION
 #
@@ -817,11 +817,40 @@ st.divider()
 # =========================================================
 
 st.subheader(
-    "🎙️ Myanmar Female Voiceover"
+    "🎙️ Myanmar Voiceover"
 )
 
 
 if "myanmar_recap" in st.session_state:
+
+    # =====================================================
+    # VOICE SELECTION
+    # =====================================================
+
+    voice_gender = st.selectbox(
+        "🎙️ Select Voice",
+        [
+            "👩 Female — Nilar",
+            "👨 Male — Thiha"
+        ],
+        key="voice_gender"
+    )
+
+    if voice_gender.startswith("👩"):
+
+        selected_voice = (
+            "my-MM-NilarNeural"
+        )
+
+    else:
+
+        selected_voice = (
+            "my-MM-ThihaNeural"
+        )
+
+    # =====================================================
+    # VOICE SPEED
+    # =====================================================
 
     voice_speed = st.selectbox(
         "🎙️ Voice Speed",
@@ -916,7 +945,7 @@ if "myanmar_recap" in st.session_state:
 
                     communicate = edge_tts.Communicate(
                         chunk,
-                        "my-MM-NilarNeural"
+                        selected_voice
                     )
 
                     await communicate.save(
@@ -1192,8 +1221,12 @@ if "myanmar_recap" in st.session_state:
                 "voice_speed_value"
             ] = float(voice_speed)
 
+            st.session_state[
+                "selected_voice"
+            ] = selected_voice
+
             st.success(
-                "✅ Myanmar Female Voiceover generated!"
+                f"✅ Myanmar {voice_gender} voiceover generated!"
             )
 
             st.success(
