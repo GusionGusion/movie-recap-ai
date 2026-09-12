@@ -8,9 +8,10 @@ import math
 import re
 import asyncio
 import shutil
+import json
 
 from PIL import Image
-from streamlit_cropper import st_cropper
+from streamlit_drawable_canvas import st_canvas
 
 
 # =========================================================
@@ -1460,8 +1461,8 @@ if "blur_height" not in st.session_state:
 if "blur_strength" not in st.session_state:
     st.session_state["blur_strength"] = 15
 
-if "blur_cropper_reset" not in st.session_state:
-    st.session_state["blur_cropper_reset"] = 0
+if "blur_canvas_reset" not in st.session_state:
+    st.session_state["blur_canvas_reset"] = 0
 
 
 # =========================================================
@@ -1475,10 +1476,10 @@ if blur_enabled:
     )
 
     st.info(
-        "📱 Blur Box ကို လက်နဲ့ဖိဆွဲပြီး "
-        "နေရာရွှေ့နိုင်ပါတယ်။ "
-        "Box အစွန်း/Corner ကို ဆွဲပြီး "
-        "အရွယ်အစား ပြောင်းနိုင်ပါတယ်။"
+        "📱 အရင် Toolbar မှာ ✋ Edit/Select Mode ကိုရွေးပါ။ "
+        "ပြီးရင် အနီရောင် Box ကို လက်နဲ့ဖိဆွဲပြီး "
+        "ရွှေ့နိုင်ပါတယ်။ Corner ကိုဆွဲပြီး "
+        "အရွယ်အစားချိန်နိုင်ပါတယ်။"
     )
 
     blur_video_path = st.session_state.get(
@@ -1551,17 +1552,9 @@ if blur_enabled:
                 "### 🎯 Blur Preview"
             )
 
-            st.caption(
-                "🔴 Blur Box ကို ဖိဆွဲ = Move"
-            )
-
-            st.caption(
-                "↔️ Box အစွန်း/Corner = Resize"
-            )
-
 
             # =================================================
-            # CURRENT BOX
+            # CURRENT BLUR BOX
             # =================================================
 
             current_x = int(
@@ -1594,172 +1587,278 @@ if blur_enabled:
 
 
             # =================================================
-            # DEFAULT COORDINATES
+            # INITIAL DRAWING
             # =================================================
 
-            default_coords = (
-                current_x,
-                current_x + current_w,
-                current_y,
-                current_y + current_h
-            )
+            initial_drawing = {
+                "version": "7.0.0",
+                "objects": [
+                    {
+                        "type": "rect",
+
+                        "left": float(
+                            current_x
+                        ),
+
+                        "top": float(
+                            current_y
+                        ),
+
+                        "width": float(
+                            current_w
+                        ),
+
+                        "height": float(
+                            current_h
+                        ),
+
+                        "scaleX": 1,
+
+                        "scaleY": 1,
+
+                        "fill": "rgba(255,0,0,0.15)",
+
+                        "stroke": "#FF0000",
+
+                        "strokeWidth": 4,
+
+                        "selectable": True,
+
+                        "evented": True,
+
+                        "hasControls": True,
+
+                        "hasBorders": True,
+
+                        "lockRotation": True,
+
+                        "angle": 0
+                    }
+                ]
+            }
 
 
             # =================================================
-            # INTERACTIVE CROP BOX
+            # CANVAS KEY
             # =================================================
 
-            cropper_key = (
-                "blur_cropper_"
+            canvas_key = (
+                "blur_canvas_"
                 + str(
                     st.session_state[
-                        "blur_cropper_reset"
+                        "blur_canvas_reset"
                     ]
                 )
             )
 
 
-            try:
+            # =================================================
+            # DRAWABLE CANVAS
+            # =================================================
 
-                blur_box = st_cropper(
-                    preview_frame,
+            canvas_result = st_canvas(
 
-                    realtime_update=True,
+                fill_color="rgba(255,0,0,0.15)",
 
-                    default_coords=default_coords,
+                stroke_width=4,
 
-                    box_color="#FF0000",
+                stroke_color="#FF0000",
 
-                    aspect_ratio=None,
+                background_image=preview_frame,
 
-                    return_type="box",
+                background_image_fit="stretch",
 
-                    should_resize_image=False,
+                update_streamlit=True,
 
-                    stroke_width=4,
+                height=1024,
 
-                    key=cropper_key
-                )
+                width=576,
 
-            except TypeError:
+                drawing_mode="rect",
 
-                # Compatibility fallback for
-                # older streamlit-cropper versions
+                initial_drawing=initial_drawing,
 
-                blur_box = st_cropper(
-                    preview_frame,
+                display_toolbar=True,
 
-                    realtime_update=True,
-
-                    default_coords=default_coords,
-
-                    box_color="#FF0000",
-
-                    aspect_ratio=None,
-
-                    return_type="box",
-
-                    should_resize_image=False,
-
-                    key=cropper_key
-                )
+                key=canvas_key
+            )
 
 
             # =================================================
-            # READ BOX
+            # READ CANVAS OBJECT
             # =================================================
 
-            if blur_box:
+            if (
+                canvas_result is not None
+                and canvas_result.json_data is not None
+            ):
 
-                final_x = int(
-                    blur_box.get(
-                        "left",
-                        current_x
+                try:
+
+                    objects = (
+                        canvas_result
+                        .json_data
+                        .get(
+                            "objects",
+                            []
+                        )
                     )
-                )
 
-                final_y = int(
-                    blur_box.get(
-                        "top",
-                        current_y
+
+                    if objects:
+
+                        # Find rectangle
+                        # We use the first object
+                        obj = objects[0]
+
+
+                        raw_x = float(
+                            obj.get(
+                                "left",
+                                current_x
+                            )
+                        )
+
+                        raw_y = float(
+                            obj.get(
+                                "top",
+                                current_y
+                            )
+                        )
+
+                        raw_w = float(
+                            obj.get(
+                                "width",
+                                current_w
+                            )
+                        )
+
+                        raw_h = float(
+                            obj.get(
+                                "height",
+                                current_h
+                            )
+                        )
+
+                        scale_x = float(
+                            obj.get(
+                                "scaleX",
+                                1
+                            )
+                        )
+
+                        scale_y = float(
+                            obj.get(
+                                "scaleY",
+                                1
+                            )
+                        )
+
+
+                        # =====================================
+                        # IMPORTANT:
+                        # Fabric keeps original width/height
+                        # and changes scaleX/scaleY when resized.
+                        # =====================================
+
+                        final_x = int(
+                            round(
+                                raw_x
+                            )
+                        )
+
+                        final_y = int(
+                            round(
+                                raw_y
+                            )
+                        )
+
+                        final_w = int(
+                            round(
+                                raw_w
+                                * scale_x
+                            )
+                        )
+
+                        final_h = int(
+                            round(
+                                raw_h
+                                * scale_y
+                            )
+                        )
+
+
+                        # =====================================
+                        # CENTER-BASED TRANSFORM FIX
+                        # =====================================
+
+                        # When scaling from left/top,
+                        # Fabric can move the visual box.
+                        # Keep coordinates inside video.
+
+                        final_x = max(
+                            0,
+                            min(
+                                575,
+                                final_x
+                            )
+                        )
+
+                        final_y = max(
+                            0,
+                            min(
+                                1023,
+                                final_y
+                            )
+                        )
+
+                        final_w = max(
+                            10,
+                            min(
+                                576 - final_x,
+                                final_w
+                            )
+                        )
+
+                        final_h = max(
+                            10,
+                            min(
+                                1024 - final_y,
+                                final_h
+                            )
+                        )
+
+
+                        # =====================================
+                        # SAVE
+                        # =====================================
+
+                        st.session_state[
+                            "blur_x"
+                        ] = final_x
+
+                        st.session_state[
+                            "blur_y"
+                        ] = final_y
+
+                        st.session_state[
+                            "blur_width"
+                        ] = final_w
+
+                        st.session_state[
+                            "blur_height"
+                        ] = final_h
+
+
+                except Exception as e:
+
+                    st.warning(
+                        f"⚠️ Blur box reading issue: {e}"
                     )
-                )
-
-                final_w = int(
-                    blur_box.get(
-                        "width",
-                        current_w
-                    )
-                )
-
-                final_h = int(
-                    blur_box.get(
-                        "height",
-                        current_h
-                    )
-                )
-
-
-                # =================================================
-                # CLAMP
-                # =================================================
-
-                final_x = max(
-                    0,
-                    min(
-                        575,
-                        final_x
-                    )
-                )
-
-                final_y = max(
-                    0,
-                    min(
-                        1023,
-                        final_y
-                    )
-                )
-
-                final_w = max(
-                    10,
-                    min(
-                        576 - final_x,
-                        final_w
-                    )
-                )
-
-                final_h = max(
-                    10,
-                    min(
-                        1024 - final_y,
-                        final_h
-                    )
-                )
-
-
-                # =================================================
-                # SAVE
-                # =================================================
-
-                st.session_state[
-                    "blur_x"
-                ] = final_x
-
-                st.session_state[
-                    "blur_y"
-                ] = final_y
-
-                st.session_state[
-                    "blur_width"
-                ] = final_w
-
-                st.session_state[
-                    "blur_height"
-                ] = final_h
 
 
             # =================================================
-            # RESET BLUR BOX
+            # RESET
             # =================================================
 
             if st.button(
@@ -1784,7 +1883,7 @@ if blur_enabled:
                 ] = 100
 
                 st.session_state[
-                    "blur_cropper_reset"
+                    "blur_canvas_reset"
                 ] += 1
 
                 st.rerun()
