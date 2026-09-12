@@ -1,5 +1,7 @@
 streamlit
+google-genai
 opencv-python-headless
 openai-whisper
-google-genai
 edge-tts
+Pillow
+streamlit-drawable-canvas
