@@ -1657,31 +1657,18 @@ if blur_enabled:
             # =================================================
 
             canvas_result = st_canvas(
-
-                fill_color="rgba(255,0,0,0.15)",
-
-                stroke_width=4,
-
-                stroke_color="#FF0000",
-
-                background_image=preview_frame,
-
-                background_image_fit="stretch",
-
-                update_streamlit=True,
-
-                height=1024,
-
-                width=576,
-
-                drawing_mode="rect",
-
-                initial_drawing=initial_drawing,
-
-                display_toolbar=True,
-
-                key=canvas_key
-            )
+    fill_color="rgba(255, 0, 0, 0.20)",
+    stroke_width=4,
+    stroke_color="#FF0000",
+    background_image=preview_frame,
+    update_streamlit=True,
+    height=1024,
+    width=576,
+    drawing_mode="rect",
+    initial_drawing=initial_drawing,
+    display_toolbar=True,
+    key=canvas_key,
+)
 
 
             # =================================================
