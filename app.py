@@ -31,6 +31,7 @@ st.write("Upload a movie and analyze video information.")
 # =========================================================
 
 def get_audio_duration(media_file):
+
     result = subprocess.run(
         [
             "ffprobe",
@@ -56,6 +57,7 @@ def get_audio_duration(media_file):
 
 
 def ass_time(seconds):
+
     seconds = max(0, float(seconds))
 
     hours = int(seconds // 3600)
@@ -100,7 +102,6 @@ def split_myanmar_text(text, max_chars=65):
     for sentence in sentences:
 
         if len(sentence) <= max_chars:
-
             chunks.append(sentence)
             continue
 
@@ -116,7 +117,6 @@ def split_myanmar_text(text, max_chars=65):
             )
 
             if len(candidate) <= max_chars:
-
                 current = candidate
 
             else:
@@ -151,7 +151,6 @@ def wrap_myanmar(text, max_chars=24):
         )
 
         if len(test) <= max_chars:
-
             current = test
 
         else:
@@ -810,7 +809,9 @@ if "myanmar_recap" in st.session_state:
 
                 results = []
 
-                for index, chunk in enumerate(chunks):
+                for index, chunk in enumerate(
+                    chunks
+                ):
 
                     raw_file = os.path.join(
                         work_dir,
@@ -826,7 +827,9 @@ if "myanmar_recap" in st.session_state:
                         raw_file
                     )
 
-                    results.append(raw_file)
+                    results.append(
+                        raw_file
+                    )
 
                 return results
 
@@ -834,18 +837,23 @@ if "myanmar_recap" in st.session_state:
                 create_all_tts()
             )
 
-            for index, raw_file in enumerate(raw_files):
+            for index, raw_file in enumerate(
+                raw_files
+            ):
 
                 duration = get_audio_duration(
                     raw_file
                 )
 
-                raw_durations.append(duration)
+                raw_durations.append(
+                    duration
+                )
 
                 cumulative_raw_time += duration
 
                 progress.progress(
-                    (index + 1) / len(raw_files)
+                    (index + 1)
+                    / len(raw_files)
                 )
 
             concat_file = os.path.join(
@@ -973,7 +981,9 @@ if "myanmar_recap" in st.session_state:
 
             raw_cursor = 0.0
 
-            for index, chunk in enumerate(chunks):
+            for index, chunk in enumerate(
+                chunks
+            ):
 
                 raw_start = raw_cursor
 
@@ -1034,7 +1044,9 @@ if "myanmar_recap" in st.session_state:
 
             st.session_state[
                 "voice_speed_value"
-            ] = float(voice_speed)
+            ] = float(
+                voice_speed
+            )
 
             st.success(
                 "✅ Myanmar Female Voiceover generated!"
@@ -1042,7 +1054,7 @@ if "myanmar_recap" in st.session_state:
 
             st.success(
                 f"✅ {len(subtitle_data)} subtitles "
-                f"were synced to the generated voice."
+                "were synced to the generated voice."
             )
 
             st.info(
@@ -1144,19 +1156,49 @@ if "subtitle_data" in st.session_state:
         start=1
     ):
 
-        start = float(item["start"])
-        end = float(item["end"])
-        text = str(item["text"]).strip()
+        start = float(
+            item["start"]
+        )
 
-        start_h = int(start // 3600)
-        start_m = int((start % 3600) // 60)
-        start_s = int(start % 60)
-        start_ms = int((start % 1) * 1000)
+        end = float(
+            item["end"]
+        )
 
-        end_h = int(end // 3600)
-        end_m = int((end % 3600) // 60)
-        end_s = int(end % 60)
-        end_ms = int((end % 1) * 1000)
+        text = str(
+            item["text"]
+        ).strip()
+
+        start_h = int(
+            start // 3600
+        )
+
+        start_m = int(
+            (start % 3600) // 60
+        )
+
+        start_s = int(
+            start % 60
+        )
+
+        start_ms = int(
+            (start % 1) * 1000
+        )
+
+        end_h = int(
+            end // 3600
+        )
+
+        end_m = int(
+            (end % 3600) // 60
+        )
+
+        end_s = int(
+            end % 60
+        )
+
+        end_ms = int(
+            (end % 1) * 1000
+        )
 
         start_time = (
             f"{start_h:02d}:"
@@ -1178,11 +1220,15 @@ if "subtitle_data" in st.session_state:
             f"{text}\n"
         )
 
-    srt_content = "\n".join(srt_lines)
+    srt_content = "\n".join(
+        srt_lines
+    )
 
     st.download_button(
         "📥 Download Myanmar Subtitle (.srt)",
-        data=srt_content.encode("utf-8"),
+        data=srt_content.encode(
+            "utf-8"
+        ),
         file_name="myanmar_subtitles.srt",
         mime="text/plain"
     )
@@ -1240,9 +1286,11 @@ st.subheader(
 
 if "subtitle_data" in st.session_state:
 
-    subtitle_duration = st.session_state.get(
-        "voice_duration",
-        0
+    subtitle_duration = (
+        st.session_state.get(
+            "voice_duration",
+            0
+        )
     )
 
     fixed_subtitles = []
@@ -1256,7 +1304,9 @@ if "subtitle_data" in st.session_state:
             float(item["start"])
         )
 
-        end = float(item["end"])
+        end = float(
+            item["end"]
+        )
 
         text = str(
             item["text"]
@@ -1350,6 +1400,7 @@ st.subheader(
     "🟦 Original Subtitle Blur"
 )
 
+
 blur_enabled = st.checkbox(
     "🟦 Enable Blur Mode",
     value=False,
@@ -1357,9 +1408,9 @@ blur_enabled = st.checkbox(
 )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # DEFAULT BLUR VALUES
-# ---------------------------------------------------------
+# =========================================================
 
 if "blur_x" not in st.session_state:
     st.session_state["blur_x"] = 20
@@ -1377,6 +1428,10 @@ if "blur_strength" not in st.session_state:
     st.session_state["blur_strength"] = 12
 
 
+# =========================================================
+# BLUR MODE ON
+# =========================================================
+
 if blur_enabled:
 
     st.info(
@@ -1385,27 +1440,30 @@ if blur_enabled:
         "နေရာကို ရွေးပါ။"
     )
 
-    # -----------------------------------------------------
-    # VIDEO PATH
-    # -----------------------------------------------------
-
-    blur_video_path = st.session_state.get(
-        "video_path",
-        None
+    blur_video_path = (
+        st.session_state.get(
+            "video_path",
+            None
+        )
     )
 
-    blur_duration = st.session_state.get(
-        "video_duration",
-        0
+    blur_duration = (
+        st.session_state.get(
+            "video_duration",
+            0
+        )
     )
 
-    if blur_video_path and os.path.exists(
+    if (
         blur_video_path
+        and os.path.exists(
+            blur_video_path
+        )
     ):
 
-        # -------------------------------------------------
+        # =================================================
         # PREVIEW TIME
-        # -------------------------------------------------
+        # =================================================
 
         if blur_duration > 0:
 
@@ -1421,8 +1479,10 @@ if blur_enabled:
                     max_preview_time
                 ),
                 value=min(
-                    0.0,
-                    float(max_preview_time)
+                    1.0,
+                    float(
+                        max_preview_time
+                    )
                 ),
                 step=0.5,
                 key="blur_preview_time"
@@ -1437,9 +1497,9 @@ if blur_enabled:
             "အချိန်ကို Preview Time နဲ့ရှာပါ။"
         )
 
-        # -------------------------------------------------
+        # =================================================
         # EXTRACT FRAME
-        # -------------------------------------------------
+        # =================================================
 
         cap_blur = cv2.VideoCapture(
             blur_video_path
@@ -1447,7 +1507,9 @@ if blur_enabled:
 
         cap_blur.set(
             cv2.CAP_PROP_POS_MSEC,
-            float(blur_preview_time) * 1000
+            float(
+                blur_preview_time
+            ) * 1000
         )
 
         ret_blur, frame_blur = (
@@ -1463,19 +1525,22 @@ if blur_enabled:
                 cv2.COLOR_BGR2RGB
             )
 
-            # ---------------------------------------------
-            # IMPORTANT
-            # ---------------------------------------------
-            # Final video is 576 x 1024.
-            # Canvas uses exactly the same size.
-            # ---------------------------------------------
+            # =================================================
+            # PHONE-FRIENDLY CANVAS
+            #
+            # Canvas = 360 x 640
+            # Final Video = 576 x 1024
+            # =================================================
 
             preview_frame = Image.fromarray(
                 frame_blur
             )
 
-            preview_frame = preview_frame.resize(
-                (576, 1024)
+            preview_frame = (
+                preview_frame.resize(
+                    (360, 640),
+                    Image.Resampling.LANCZOS
+                )
             )
 
             st.markdown(
@@ -1484,12 +1549,13 @@ if blur_enabled:
 
             st.caption(
                 "📱 Phone မှာ လက်နဲ့ ဖိဆွဲပြီး "
-                "Rectangle တစ်ခုဆွဲပါ။"
+                "Original Subtitle ပေါ်က Rectangle ကို "
+                "ဆွဲပါ။"
             )
 
-            # ---------------------------------------------
-            # CLEAR BUTTON
-            # ---------------------------------------------
+            # =================================================
+            # CLEAR BLUR
+            # =================================================
 
             if st.button(
                 "🗑️ Clear Blur Selection",
@@ -1514,169 +1580,219 @@ if blur_enabled:
 
                 st.rerun()
 
-            # ---------------------------------------------
+            # =================================================
             # DRAWABLE CANVAS
-            # ---------------------------------------------
+            #
+            # IMPORTANT:
+            # No display_toolbar=True
+            # because this can cause TypeError on
+            # some Streamlit / drawable-canvas versions.
+            # =================================================
 
             canvas_result = st_canvas(
-
-                fill_color=(
-                    "rgba(255, 0, 0, 0.25)"
-                ),
-
-                stroke_width=4,
-
+                fill_color="rgba(255, 0, 0, 0.25)",
+                stroke_width=3,
                 stroke_color="#FF0000",
-
                 background_image=preview_frame,
-
                 update_streamlit=True,
-
-                height=1024,
-
-                width=576,
-
+                height=640,
+                width=360,
                 drawing_mode="rect",
-
-                display_toolbar=True,
-
                 key="blur_draw_canvas"
             )
 
-            # ---------------------------------------------
+            # =================================================
             # READ RECTANGLE
-            # ---------------------------------------------
+            # =================================================
 
-            if (
-                canvas_result.json_data
-                is not None
-            ):
+            if canvas_result is not None:
 
-                objects = (
-                    canvas_result
-                    .json_data
-                    .get(
-                        "objects",
-                        []
-                    )
-                )
+                if canvas_result.json_data is not None:
 
-                rectangles = [
-                    obj
-                    for obj in objects
-                    if obj.get("type") == "rect"
-                ]
-
-                if rectangles:
-
-                    rect = rectangles[-1]
-
-                    raw_x = float(
-                        rect.get(
-                            "left",
-                            0
+                    objects = (
+                        canvas_result
+                        .json_data
+                        .get(
+                            "objects",
+                            []
                         )
                     )
 
-                    raw_y = float(
-                        rect.get(
-                            "top",
-                            0
-                        )
-                    )
+                    rectangles = [
+                        obj
+                        for obj in objects
+                        if obj.get("type") == "rect"
+                    ]
 
-                    raw_w = (
-                        float(
-                            rect.get(
-                                "width",
-                                0
+                    if rectangles:
+
+                        rect = rectangles[-1]
+
+                        # -------------------------------------
+                        # CANVAS COORDINATES
+                        # -------------------------------------
+
+                        canvas_w = 360.0
+                        canvas_h = 640.0
+
+                        # -------------------------------------
+                        # FINAL VIDEO COORDINATES
+                        # -------------------------------------
+
+                        final_w = 576.0
+                        final_h = 1024.0
+
+                        scale_x = (
+                            final_w
+                            / canvas_w
+                        )
+
+                        scale_y = (
+                            final_h
+                            / canvas_h
+                        )
+
+                        # -------------------------------------
+                        # RECTANGLE POSITION
+                        # -------------------------------------
+
+                        raw_x = (
+                            float(
+                                rect.get(
+                                    "left",
+                                    0
+                                )
+                            )
+                            * scale_x
+                        )
+
+                        raw_y = (
+                            float(
+                                rect.get(
+                                    "top",
+                                    0
+                                )
+                            )
+                            * scale_y
+                        )
+
+                        # -------------------------------------
+                        # RECTANGLE SIZE
+                        # -------------------------------------
+
+                        raw_w = (
+                            float(
+                                rect.get(
+                                    "width",
+                                    0
+                                )
+                            )
+                            * float(
+                                rect.get(
+                                    "scaleX",
+                                    1
+                                )
+                            )
+                            * scale_x
+                        )
+
+                        raw_h = (
+                            float(
+                                rect.get(
+                                    "height",
+                                    0
+                                )
+                            )
+                            * float(
+                                rect.get(
+                                    "scaleY",
+                                    1
+                                )
+                            )
+                            * scale_y
+                        )
+
+                        # -------------------------------------
+                        # CLAMP
+                        # -------------------------------------
+
+                        bx = max(
+                            0,
+                            min(
+                                575,
+                                int(
+                                    round(
+                                        raw_x
+                                    )
+                                )
                             )
                         )
-                        * float(
-                            rect.get(
-                                "scaleX",
-                                1
+
+                        by = max(
+                            0,
+                            min(
+                                1023,
+                                int(
+                                    round(
+                                        raw_y
+                                    )
+                                )
                             )
                         )
-                    )
 
-                    raw_h = (
-                        float(
-                            rect.get(
-                                "height",
-                                0
+                        bw = max(
+                            10,
+                            min(
+                                576 - bx,
+                                int(
+                                    round(
+                                        raw_w
+                                    )
+                                )
                             )
                         )
-                        * float(
-                            rect.get(
-                                "scaleY",
-                                1
+
+                        bh = max(
+                            10,
+                            min(
+                                1024 - by,
+                                int(
+                                    round(
+                                        raw_h
+                                    )
+                                )
                             )
                         )
-                    )
 
-                    # -------------------------------------
-                    # Clamp coordinates
-                    # -------------------------------------
+                        # -------------------------------------
+                        # SAVE
+                        # -------------------------------------
 
-                    bx = max(
-                        0,
-                        min(
-                            575,
-                            int(round(raw_x))
+                        st.session_state[
+                            "blur_x"
+                        ] = bx
+
+                        st.session_state[
+                            "blur_y"
+                        ] = by
+
+                        st.session_state[
+                            "blur_width"
+                        ] = bw
+
+                        st.session_state[
+                            "blur_height"
+                        ] = bh
+
+                        st.success(
+                            f"✅ Blur Area Selected — "
+                            f"X={bx}, Y={by}, "
+                            f"W={bw}, H={bh}"
                         )
-                    )
 
-                    by = max(
-                        0,
-                        min(
-                            1023,
-                            int(round(raw_y))
-                        )
-                    )
-
-                    bw = max(
-                        10,
-                        min(
-                            576 - bx,
-                            int(round(raw_w))
-                        )
-                    )
-
-                    bh = max(
-                        10,
-                        min(
-                            1024 - by,
-                            int(round(raw_h))
-                        )
-                    )
-
-                    # Save to session
-                    st.session_state[
-                        "blur_x"
-                    ] = bx
-
-                    st.session_state[
-                        "blur_y"
-                    ] = by
-
-                    st.session_state[
-                        "blur_width"
-                    ] = bw
-
-                    st.session_state[
-                        "blur_height"
-                    ] = bh
-
-                    st.success(
-                        f"✅ Blur Area Selected — "
-                        f"X={bx}, Y={by}, "
-                        f"W={bw}, H={bh}"
-                    )
-
-            # ---------------------------------------------
-            # CURRENT BLUR VALUES
-            # ---------------------------------------------
+            # =================================================
+            # GET CURRENT VALUES
+            # =================================================
 
             blur_x = int(
                 st.session_state[
@@ -1702,9 +1818,9 @@ if blur_enabled:
                 ]
             )
 
-            # ---------------------------------------------
-            # MANUAL FINE TUNING
-            # ---------------------------------------------
+            # =================================================
+            # FINE TUNE
+            # =================================================
 
             st.markdown(
                 "### 🎛️ Fine Tune Blur Area"
@@ -1760,23 +1876,31 @@ if blur_enabled:
 
             st.session_state[
                 "blur_x"
-            ] = int(blur_x)
+            ] = int(
+                blur_x
+            )
 
             st.session_state[
                 "blur_y"
-            ] = int(blur_y)
+            ] = int(
+                blur_y
+            )
 
             st.session_state[
                 "blur_width"
-            ] = int(blur_width)
+            ] = int(
+                blur_width
+            )
 
             st.session_state[
                 "blur_height"
-            ] = int(blur_height)
+            ] = int(
+                blur_height
+            )
 
-            # ---------------------------------------------
+            # =================================================
             # BLUR STRENGTH
-            # ---------------------------------------------
+            # =================================================
 
             blur_strength = st.slider(
                 "🌫️ Blur Strength",
@@ -1793,7 +1917,9 @@ if blur_enabled:
 
             st.session_state[
                 "blur_strength"
-            ] = int(blur_strength)
+            ] = int(
+                blur_strength
+            )
 
             st.info(
                 f"🟦 Selected Blur Area: "
@@ -1848,9 +1974,9 @@ if (
 
         try:
 
-            # =========================================
+            # =============================================
             # SAVE ORIGINAL VIDEO
-            # =========================================
+            # =============================================
 
             original_video = os.path.join(
                 tempfile.gettempdir(),
@@ -1874,17 +2000,17 @@ if (
                 ]
             )
 
-            # =========================================
+            # =============================================
             # VIDEO DURATION
-            # =========================================
+            # =============================================
 
             video_duration = get_audio_duration(
                 original_video
             )
 
-            # =========================================
+            # =============================================
             # VOICEOVER DURATION
-            # =========================================
+            # =============================================
 
             voice_duration = get_audio_duration(
                 voice_file
@@ -1899,9 +2025,9 @@ if (
                 f"{voice_duration:.2f} sec"
             )
 
-            # =========================================
+            # =============================================
             # FREEZE SETTINGS
-            # =========================================
+            # =============================================
 
             if freeze_enabled:
 
@@ -1921,9 +2047,9 @@ if (
 
                 freeze_time = 0
 
-            # =========================================
+            # =============================================
             # ASS SUBTITLES
-            # =========================================
+            # =============================================
 
             ass_content = """[Script Info]
 ScriptType: v4.00+
@@ -1945,12 +2071,16 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 new_start = max(
                     0,
-                    float(item["start"])
+                    float(
+                        item["start"]
+                    )
                 )
 
                 new_end = max(
                     new_start + 0.1,
-                    float(item["end"])
+                    float(
+                        item["end"]
+                    )
                 )
 
                 text = wrap_myanmar(
@@ -1991,16 +2121,16 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     ass_content
                 )
 
-            # =========================================
+            # =============================================
             # VIDEO FILTER
-            # =========================================
+            # =============================================
 
             filter_parts = []
             labels = []
 
-            # =========================================
+            # =============================================
             # FREEZE + ZOOM
-            # =========================================
+            # =============================================
 
             if freeze_enabled:
 
@@ -2045,9 +2175,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         f"[{normal_label}]"
                     )
 
-                    # =================================
+                    # =====================================
                     # FREEZE + ZOOM
-                    # =================================
+                    # =====================================
 
                     if end < video_duration:
 
@@ -2060,9 +2190,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             end - 0.10
                         )
 
-                        # IMPORTANT:
-                        # Use the selected freeze duration
-                        # instead of hardcoded 60 frames.
                         freeze_frames = max(
                             1,
                             int(
@@ -2077,6 +2204,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             freeze_frames // 2
                         )
 
+                        zoom_down_frames = max(
+                            1,
+                            freeze_frames
+                            - zoom_frames
+                        )
+
                         freeze_filter = (
                             f"[0:v]"
                             f"trim=start={frame_time}:"
@@ -2086,10 +2219,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             f"scale=576:1024,"
                             f"setsar=1,"
                             f"zoompan="
-                            f"z='if(lte(on,{zoom_frames - 1}),"
-                            f"1+0.15*on/{max(1, zoom_frames - 1)},"
+                            f"z='if("
+                            f"lte(on,{zoom_frames - 1}),"
+                            f"1+0.15*on/"
+                            f"{max(1, zoom_frames - 1)},"
                             f"1.15-0.15*(on-{zoom_frames})/"
-                            f"{max(1, zoom_frames - 1)})':"
+                            f"{max(1, zoom_down_frames)}"
+                            f")':"
                             f"d={freeze_frames}:"
                             f"x='iw/2-(iw/zoom/2)':"
                             f"y='ih/2-(ih/zoom/2)':"
@@ -2133,9 +2269,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     "[basevideo]"
                 )
 
-            # =========================================
+            # =============================================
             # ORIGINAL SUBTITLE BLUR
-            # =========================================
+            # =============================================
 
             video_for_subtitle = (
                 "[basevideo]"
@@ -2208,13 +2344,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     )
                 )
 
-                # -----------------------------------------
-                # FIXED BLUR FILTER
-                #
-                # The selected rectangle is copied from
-                # the zoomed/frozen video, blurred, and
-                # overlaid back onto the same position.
-                # -----------------------------------------
+                # =========================================
+                # BLUR FILTER
+                # =========================================
 
                 blur_filter = (
                     f"[basevideo]"
@@ -2245,9 +2377,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     "[blurredvideo]"
                 )
 
-            # =========================================
+            # =============================================
             # MYANMAR SUBTITLE
-            # =========================================
+            # =============================================
 
             filter_parts.append(
                 f"{video_for_subtitle}"
@@ -2255,9 +2387,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 f"[vout]"
             )
 
-            # =========================================
+            # =============================================
             # DURATION CALCULATION
-            # =========================================
+            # =============================================
 
             if freeze_enabled:
 
@@ -2294,9 +2426,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 f"{extra_duration:.2f} sec"
             )
 
-            # =========================================
+            # =============================================
             # BLUR STATUS
-            # =========================================
+            # =============================================
 
             if blur_enabled:
 
@@ -2317,16 +2449,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     "⬜ Original Subtitle Blur: OFF"
                 )
 
-            # =========================================
+            # =============================================
             # EXTEND FINAL FRAME
-            # =========================================
+            # =============================================
 
             if extra_duration > 0:
 
                 filter_parts.append(
                     "[vout]"
-                    f"tpad=stop_mode=clone:"
-                    f"stop_duration={extra_duration:.3f}:"
+                    f"tpad="
+                    f"stop_mode=clone:"
+                    f"stop_duration="
+                    f"{extra_duration:.3f}:"
                     f"start_mode=clone,"
                     f"setpts=PTS-STARTPTS"
                     "[vout2]"
@@ -2342,17 +2476,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     "[vout]"
                 )
 
-            # =========================================
+            # =============================================
             # FILTER COMPLEX
-            # =========================================
+            # =============================================
 
             filter_complex = ";".join(
                 filter_parts
             )
 
-            # =========================================
+            # =============================================
             # OUTPUT
-            # =========================================
+            # =============================================
 
             output_video = os.path.join(
                 tempfile.gettempdir(),
@@ -2404,9 +2538,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 output_video
             ]
 
-            # =========================================
+            # =============================================
             # EXPORT
-            # =========================================
+            # =============================================
 
             st.info(
                 "⏳ Creating final video... "
@@ -2432,8 +2566,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
             else:
 
-                final_duration = get_audio_duration(
-                    output_video
+                final_duration = (
+                    get_audio_duration(
+                        output_video
+                    )
                 )
 
                 st.success(
