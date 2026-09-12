@@ -3,6 +3,14 @@ import os
 from google import genai
 import cv2
 import tempfile
+import subprocess
+import math
+import json
+
+
+# =========================================================
+# PAGE SETTINGS
+# =========================================================
 
 st.set_page_config(
     page_title="Movie Recap AI",
@@ -12,16 +20,26 @@ st.set_page_config(
 st.title("🎬 Movie Recap AI")
 st.write("Upload a movie and analyze video information.")
 
+
+# =========================================================
+# VIDEO UPLOAD
+# =========================================================
+
 uploaded_file = st.file_uploader(
     "🎥 Upload Movie / Video",
     type=["mp4", "mov", "avi", "mkv", "webm"]
 )
 
+
 if uploaded_file is not None:
 
-    st.session_state["uploaded_file"] = uploaded_file.getvalue()
+    st.session_state["uploaded_file"] = (
+        uploaded_file.getvalue()
+    )
 
-    file_size_mb = uploaded_file.size / (1024 * 1024)
+    file_size_mb = (
+        uploaded_file.size / (1024 * 1024)
+    )
 
     video_bytes = uploaded_file.getvalue()
 
@@ -33,56 +51,116 @@ if uploaded_file is not None:
         temp_file.write(video_bytes)
         video_path = temp_file.name
 
+
     cap = cv2.VideoCapture(video_path)
 
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = cap.get(
+        cv2.CAP_PROP_FPS
+    )
 
-    duration = frame_count / fps if fps else 0
+    frame_count = cap.get(
+        cv2.CAP_PROP_FRAME_COUNT
+    )
+
+    width = int(
+        cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+    )
+
+    height = int(
+        cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    )
+
+    duration = (
+        frame_count / fps
+        if fps
+        else 0
+    )
 
     cap.release()
 
-    suffix = os.path.splitext(uploaded_file.name)[1]
+
+    suffix = os.path.splitext(
+        uploaded_file.name
+    )[1]
+
 
     with tempfile.NamedTemporaryFile(
         delete=False,
         suffix=suffix
     ) as temp_file:
 
-        temp_file.write(uploaded_file.getbuffer())
+        temp_file.write(
+            uploaded_file.getbuffer()
+        )
+
         video_path = temp_file.name
 
-    cap = cv2.VideoCapture(video_path)
+
+    cap = cv2.VideoCapture(
+        video_path
+    )
+
 
     if not cap.isOpened():
 
-        st.error("❌ Video file could not be opened.")
+        st.error(
+            "❌ Video file could not be opened."
+        )
 
     else:
 
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        fps = cap.get(
+            cv2.CAP_PROP_FPS
+        )
 
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        frame_count = cap.get(
+            cv2.CAP_PROP_FRAME_COUNT
+        )
+
+        width = int(
+            cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+        )
+
+        height = int(
+            cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        )
+
 
         if fps > 0:
-            duration_seconds = frame_count / fps
+
+            duration_seconds = (
+                frame_count / fps
+            )
+
         else:
+
             duration_seconds = 0
 
-        minutes = int(duration_seconds // 60)
-        seconds = int(duration_seconds % 60)
 
-        st.success("✅ Video uploaded successfully!")
+        minutes = int(
+            duration_seconds // 60
+        )
 
-        st.subheader("📊 Video Information")
+        seconds = int(
+            duration_seconds % 60
+        )
+
+
+        st.success(
+            "✅ Video uploaded successfully!"
+        )
+
+
+        st.subheader(
+            "📊 Video Information"
+        )
+
 
         col1, col2 = st.columns(2)
 
+
         with col1:
+
             st.metric(
                 "File Size",
                 f"{file_size_mb:.2f} MB"
@@ -93,7 +171,9 @@ if uploaded_file is not None:
                 f"{width} × {height}"
             )
 
+
         with col2:
+
             st.metric(
                 "Duration",
                 f"{minutes} min {seconds} sec"
@@ -104,44 +184,84 @@ if uploaded_file is not None:
                 f"{fps:.2f}"
             )
 
+
         st.divider()
 
-        st.subheader("🎥 Video Preview")
 
-        st.video(uploaded_file)
+        st.subheader(
+            "🎥 Video Preview"
+        )
+
+        st.video(
+            uploaded_file
+        )
+
 
     cap.release()
 
     st.divider()
 
-st.subheader("🎤 Movie Transcript")
+
+# =========================================================
+# MOVIE TRANSCRIPT
+# =========================================================
+
+st.subheader(
+    "🎤 Movie Transcript"
+)
+
 
 if uploaded_file is not None:
 
-    if st.button("📝 Generate Transcript"):
+    if st.button(
+        "📝 Generate Transcript"
+    ):
 
-        st.info("⏳ Transcribing movie audio... Please wait.")
+        st.info(
+            "⏳ Transcribing movie audio... Please wait."
+        )
+
 
         try:
+
             import whisper
 
-            model = whisper.load_model("base")
+
+            model = whisper.load_model(
+                "base"
+            )
+
 
             result = model.transcribe(
                 video_path,
                 language="en"
             )
 
-            st.session_state["transcript_result"] = result
-            st.session_state["transcript"] = result["text"]
 
-            st.success("✅ Transcript generated!")
+            st.session_state[
+                "transcript_result"
+            ] = result
+
+
+            st.session_state[
+                "transcript"
+            ] = result["text"]
+
+
+            st.success(
+                "✅ Transcript generated!"
+            )
+
 
         except Exception as e:
-            st.error(f"❌ Transcription failed: {e}")
+
+            st.error(
+                f"❌ Transcription failed: {e}"
+            )
 
 
 # Show saved transcript
+
 if "transcript" in st.session_state:
 
     st.text_area(
@@ -153,16 +273,31 @@ if "transcript" in st.session_state:
 
 st.divider()
 
-st.subheader("🎬 Scene Analysis")
+
+# =========================================================
+# SCENE ANALYSIS
+# =========================================================
+
+st.subheader(
+    "🎬 Scene Analysis"
+)
+
 
 if "transcript_result" in st.session_state:
 
-    if st.button("🎞️ Analyze Scenes"):
+    if st.button(
+        "🎞️ Analyze Scenes"
+    ):
 
-        segments = st.session_state["transcript_result"].get(
-            "segments",
-            []
+        segments = (
+            st.session_state[
+                "transcript_result"
+            ].get(
+                "segments",
+                []
+            )
         )
+
 
         if not segments:
 
@@ -170,17 +305,33 @@ if "transcript_result" in st.session_state:
                 "⚠️ No timestamped transcript segments found."
             )
 
+
         else:
 
             st.success(
                 f"✅ {len(segments)} scenes analyzed!"
             )
 
-            for i, segment in enumerate(segments):
 
-                start = segment.get("start", 0)
-                end = segment.get("end", 0)
-                text = segment.get("text", "").strip()
+            for i, segment in enumerate(
+                segments
+            ):
+
+                start = segment.get(
+                    "start",
+                    0
+                )
+
+                end = segment.get(
+                    "end",
+                    0
+                )
+
+                text = segment.get(
+                    "text",
+                    ""
+                ).strip()
+
 
                 if text:
 
@@ -189,25 +340,47 @@ if "transcript_result" in st.session_state:
                         f"({start:.1f}s → {end:.1f}s)"
                     )
 
-                    st.write(text)
+                    st.write(
+                        text
+                    )
 
 
 st.divider()
 
-st.subheader("🤖 AI Scene Analysis")
+
+# =========================================================
+# AI SCENE ANALYSIS
+# =========================================================
+
+st.subheader(
+    "🤖 AI Scene Analysis"
+)
+
 
 if "transcript" in st.session_state:
 
-    if st.button("🤖 Analyze with Gemini"):
+    if st.button(
+        "🤖 Analyze with Gemini"
+    ):
 
         try:
-            api_key = st.secrets["GEMINI_API_KEY"]
+
+            api_key = st.secrets[
+                "GEMINI_API_KEY"
+            ]
+
 
             client = genai.Client(
                 api_key=api_key
             )
 
-            transcript_text = st.session_state["transcript"]
+
+            transcript_text = (
+                st.session_state[
+                    "transcript"
+                ]
+            )
+
 
             prompt = f"""
 You are a professional movie recap analyst.
@@ -234,44 +407,79 @@ Movie Transcript:
 {transcript_text}
 """
 
-            response = client.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=prompt
+
+            response = (
+                client.models.generate_content(
+                    model="gemini-3.6-flash",
+                    contents=prompt
+                )
             )
 
-            st.session_state["ai_scene_analysis"] = response.text
 
-            st.success("✅ Gemini Scene Analysis completed!")
+            st.session_state[
+                "ai_scene_analysis"
+            ] = response.text
+
+
+            st.success(
+                "✅ Gemini Scene Analysis completed!"
+            )
+
 
         except Exception as e:
-            st.error(f"❌ Gemini Analysis failed: {e}")
+
+            st.error(
+                f"❌ Gemini Analysis failed: {e}"
+            )
 
 
 if "ai_scene_analysis" in st.session_state:
 
     st.text_area(
         "🤖 AI Scene Analysis Result",
-        st.session_state["ai_scene_analysis"],
+        st.session_state[
+            "ai_scene_analysis"
+        ],
         height=500
     )
 
 
 st.divider()
 
-st.subheader("📝 Movie Recap Script")
+
+# =========================================================
+# MOVIE RECAP SCRIPT
+# =========================================================
+
+st.subheader(
+    "📝 Movie Recap Script"
+)
+
 
 if "ai_scene_analysis" in st.session_state:
 
-    if st.button("🎬 Generate Recap Script"):
+    if st.button(
+        "🎬 Generate Recap Script"
+    ):
 
         try:
-            api_key = st.secrets["GEMINI_API_KEY"]
+
+            api_key = st.secrets[
+                "GEMINI_API_KEY"
+            ]
+
 
             client = genai.Client(
                 api_key=api_key
             )
 
-            scene_analysis = st.session_state["ai_scene_analysis"]
+
+            scene_analysis = (
+                st.session_state[
+                    "ai_scene_analysis"
+                ]
+            )
+
 
             prompt = f"""
 You are a professional movie recap script writer.
@@ -293,16 +501,24 @@ Scene Analysis:
 {scene_analysis}
 """
 
-            response = client.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=prompt
+
+            response = (
+                client.models.generate_content(
+                    model="gemini-3.6-flash",
+                    contents=prompt
+                )
             )
 
-            st.session_state["recap_script"] = response.text
+
+            st.session_state[
+                "recap_script"
+            ] = response.text
+
 
             st.success(
                 "✅ Movie Recap Script generated!"
             )
+
 
         except Exception as e:
 
@@ -315,27 +531,49 @@ if "recap_script" in st.session_state:
 
     st.text_area(
         "🎬 Recap Script",
-        st.session_state["recap_script"],
+        st.session_state[
+            "recap_script"
+        ],
         height=600
     )
 
 
 st.divider()
 
-st.subheader("🇲🇲 Myanmar Recap Script")
+
+# =========================================================
+# MYANMAR RECAP SCRIPT
+# =========================================================
+
+st.subheader(
+    "🇲🇲 Myanmar Recap Script"
+)
+
 
 if "recap_script" in st.session_state:
 
-    if st.button("🇲🇲 Translate to Myanmar"):
+    if st.button(
+        "🇲🇲 Translate to Myanmar"
+    ):
 
         try:
-            api_key = st.secrets["GEMINI_API_KEY"]
+
+            api_key = st.secrets[
+                "GEMINI_API_KEY"
+            ]
+
 
             client = genai.Client(
                 api_key=api_key
             )
 
-            recap_script = st.session_state["recap_script"]
+
+            recap_script = (
+                st.session_state[
+                    "recap_script"
+                ]
+            )
+
 
             prompt = f"""
 Translate the following movie recap narration into natural
@@ -355,16 +593,24 @@ English Recap:
 {recap_script}
 """
 
-            response = client.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=prompt
+
+            response = (
+                client.models.generate_content(
+                    model="gemini-3.6-flash",
+                    contents=prompt
+                )
             )
 
-            st.session_state["myanmar_recap"] = response.text
+
+            st.session_state[
+                "myanmar_recap"
+            ] = response.text
+
 
             st.success(
                 "✅ Myanmar Recap Script generated!"
             )
+
 
         except Exception as e:
 
@@ -377,13 +623,23 @@ if "myanmar_recap" in st.session_state:
 
     st.text_area(
         "🇲🇲 Myanmar Recap",
-        st.session_state["myanmar_recap"]
+        st.session_state[
+            "myanmar_recap"
+        ]
     )
 
 
 st.divider()
 
-st.subheader("🎙️ Myanmar Female Voiceover")
+
+# =========================================================
+# MYANMAR FEMALE VOICEOVER
+# =========================================================
+
+st.subheader(
+    "🎙️ Myanmar Female Voiceover"
+)
+
 
 if "myanmar_recap" in st.session_state:
 
@@ -393,14 +649,23 @@ if "myanmar_recap" in st.session_state:
         index=0
     )
 
-    if st.button("🎙️ Generate Myanmar Voiceover"):
+
+    if st.button(
+        "🎙️ Generate Myanmar Voiceover"
+    ):
 
         try:
+
             import edge_tts
             import asyncio
-            import subprocess
 
-            text = st.session_state["myanmar_recap"]
+
+            text = (
+                st.session_state[
+                    "myanmar_recap"
+                ]
+            )
+
 
             async def create_voice():
 
@@ -409,19 +674,28 @@ if "myanmar_recap" in st.session_state:
                     "my-MM-NilarNeural"
                 )
 
+
                 await communicate.save(
                     "myanmar_voiceover.mp3"
                 )
 
-            asyncio.run(create_voice())
 
-            voice_file = "myanmar_voiceover.mp3"
+            asyncio.run(
+                create_voice()
+            )
+
+
+            voice_file = (
+                "myanmar_voiceover.mp3"
+            )
+
 
             if voice_speed != 1.0:
 
                 speed_file = (
                     "myanmar_voiceover_speed.mp3"
                 )
+
 
                 subprocess.run(
                     [
@@ -436,15 +710,56 @@ if "myanmar_recap" in st.session_state:
                     check=True
                 )
 
-                voice_file = speed_file
 
-            st.session_state["voiceover_file"] = (
-                voice_file
+                voice_file = (
+                    speed_file
+                )
+
+
+            st.session_state[
+                "voiceover_file"
+            ] = voice_file
+
+
+            # Read exact duration
+
+            probe = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    voice_file
+                ],
+                capture_output=True,
+                text=True,
+                check=True
             )
+
+
+            voice_duration = float(
+                probe.stdout.strip()
+            )
+
+
+            st.session_state[
+                "voice_duration"
+            ] = voice_duration
+
 
             st.success(
                 "✅ Myanmar Female Voiceover generated!"
             )
+
+
+            st.info(
+                f"🎙️ Voiceover Duration: "
+                f"{voice_duration:.2f} seconds"
+            )
+
 
         except Exception as e:
 
@@ -456,86 +771,159 @@ if "myanmar_recap" in st.session_state:
 if "voiceover_file" in st.session_state:
 
     st.audio(
-        st.session_state["voiceover_file"],
+        st.session_state[
+            "voiceover_file"
+        ],
         format="audio/mp3"
     )
 
 
 st.divider()
 
-st.subheader("🇲🇲 Myanmar Subtitle")
 
-if "myanmar_recap" in st.session_state:
+# =========================================================
+# MYANMAR SUBTITLE
+# =========================================================
+#
+# IMPORTANT:
+# Gemini is NO LONGER used for subtitle timing.
+#
+# We generate the voiceover first.
+# Then Whisper listens to the actual voiceover
+# and gives us the real speech timestamps.
+# =========================================================
 
-    if st.button("💬 Generate Myanmar Subtitle"):
+st.subheader(
+    "🇲🇲 Myanmar Subtitle"
+)
+
+
+if "voiceover_file" in st.session_state:
+
+    if st.button(
+        "💬 Generate Myanmar Subtitle"
+    ):
 
         try:
-            api_key = st.secrets["GEMINI_API_KEY"]
 
-            client = genai.Client(
-                api_key=api_key
+            import whisper
+
+
+            st.info(
+                "⏳ Listening to Myanmar Voiceover and creating exact subtitle timing..."
             )
 
-            myanmar_text = st.session_state["myanmar_recap"]
 
-            prompt = f"""
-Create Myanmar subtitles for the following movie recap narration.
+            # -----------------------------------------
+            # Load Whisper
+            # -----------------------------------------
 
-Rules:
-- Write only Myanmar Burmese.
-- Split the narration into short subtitle segments.
-- Each segment should be easy to read.
-- Maximum 12 words per subtitle.
-- Keep the original meaning.
-- Do not invent information.
-- Return ONLY valid JSON.
-- Do not use markdown.
-
-Required JSON format:
-
-[
-  {{
-    "start": 0,
-    "end": 5,
-    "text": "မြန်မာစာတန်းထိုး"
-  }},
-  {{
-    "start": 5,
-    "end": 10,
-    "text": "နောက်ထပ် မြန်မာစာတန်းထိုး"
-  }}
-]
-
-Myanmar Recap:
-
-{myanmar_text}
-"""
-
-            response = client.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=prompt
+            model = whisper.load_model(
+                "base"
             )
 
-            import json
 
-            subtitle_data = json.loads(
-                response.text
+            # -----------------------------------------
+            # Transcribe generated Myanmar voice
+            # -----------------------------------------
+
+            voice_result = model.transcribe(
+                st.session_state[
+                    "voiceover_file"
+                ],
+                language="my",
+                task="transcribe",
+                verbose=False
             )
 
-            st.session_state["subtitle_data"] = (
-                subtitle_data
+
+            voice_segments = (
+                voice_result.get(
+                    "segments",
+                    []
+                )
             )
 
-            st.success(
-                "✅ Myanmar Subtitle generated!"
-            )
+
+            subtitle_data = []
+
+
+            # -----------------------------------------
+            # Build subtitle data
+            # -----------------------------------------
+
+            for segment in voice_segments:
+
+                start = float(
+                    segment.get(
+                        "start",
+                        0
+                    )
+                )
+
+
+                end = float(
+                    segment.get(
+                        "end",
+                        0
+                    )
+                )
+
+
+                text = segment.get(
+                    "text",
+                    ""
+                ).strip()
+
+
+                if not text:
+                    continue
+
+
+                if end <= start:
+                    continue
+
+
+                subtitle_data.append({
+                    "start": start,
+                    "end": end,
+                    "text": text
+                })
+
+
+            if not subtitle_data:
+
+                st.warning(
+                    "⚠️ Whisper could not detect subtitle segments."
+                )
+
+            else:
+
+                st.session_state[
+                    "subtitle_data"
+                ] = subtitle_data
+
+
+                st.session_state[
+                    "subtitle_timing_source"
+                ] = "voiceover"
+
+
+                st.success(
+                    f"✅ {len(subtitle_data)} subtitles synced to voiceover!"
+                )
+
 
         except Exception as e:
 
             st.error(
-                f"❌ Subtitle generation failed: {e}"
+                f"❌ Voiceover subtitle generation failed: {e}"
             )
 
+
+# -----------------------------------------
+# Subtitle Preview
+# -----------------------------------------
 
 if "subtitle_data" in st.session_state:
 
@@ -543,178 +931,136 @@ if "subtitle_data" in st.session_state:
         "💬 Myanmar Subtitle Preview",
         "\n".join(
             [
-                f'{item["start"]:.1f}s → '
-                f'{item["end"]:.1f}s | '
+                f'{item["start"]:.2f}s → '
+                f'{item["end"]:.2f}s | '
                 f'{item["text"]}'
-                for item in st.session_state["subtitle_data"]
+                for item in st.session_state[
+                    "subtitle_data"
+                ]
             ]
         ),
         height=400
     )
 
 
-st.subheader("📥 Subtitle Export")
+st.divider()
+
+
+# =========================================================
+# SUBTITLE EXPORT
+# =========================================================
+
+st.subheader(
+    "📥 Subtitle Export"
+)
+
 
 if "subtitle_data" in st.session_state:
 
     srt_content = ""
 
+
     for i, item in enumerate(
-        st.session_state["subtitle_data"],
+        st.session_state[
+            "subtitle_data"
+        ],
         start=1
     ):
 
-        start = float(item["start"])
-        end = float(item["end"])
-        text = item["text"].strip()
+        start = float(
+            item["start"]
+        )
 
-        start_h = int(start // 3600)
-        start_m = int((start % 3600) // 60)
-        start_s = int(start % 60)
-        start_ms = int((start % 1) * 1000)
+        end = float(
+            item["end"]
+        )
 
-        end_h = int(end // 3600)
-        end_m = int((end % 3600) // 60)
-        end_s = int(end % 60)
-        end_ms = int((end % 1) * 1000)
+        text = str(
+            item["text"]
+        ).strip()
+
+
+        start_h = int(
+            start // 3600
+        )
+
+        start_m = int(
+            (start % 3600) // 60
+        )
+
+        start_s = int(
+            start % 60
+        )
+
+        start_ms = int(
+            (start % 1) * 1000
+        )
+
+
+        end_h = int(
+            end // 3600
+        )
+
+        end_m = int(
+            (end % 3600) // 60
+        )
+
+        end_s = int(
+            end % 60
+        )
+
+        end_ms = int(
+            (end % 1) * 1000
+        )
+
 
         start_time = (
-            f"{start_h:02d}:{start_m:02d}:"
-            f"{start_s:02d},{start_ms:03d}"
+            f"{start_h:02d}:"
+            f"{start_m:02d}:"
+            f"{start_s:02d},"
+            f"{start_ms:03d}"
         )
 
+
         end_time = (
-            f"{end_h:02d}:{end_m:02d}:"
-            f"{end_s:02d},{end_ms:03d}"
+            f"{end_h:02d}:"
+            f"{end_m:02d}:"
+            f"{end_s:02d},"
+            f"{end_ms:03d}"
         )
+
 
         srt_content += (
             f"{i}\n"
-            f"{start_time} --> {end_time}\n"
+            f"{start_time} --> "
+            f"{end_time}\n"
             f"{text}\n\n"
         )
 
+
     st.download_button(
         "📥 Download Myanmar Subtitle (.srt)",
-        data=srt_content.encode("utf-8"),
+        data=srt_content.encode(
+            "utf-8"
+        ),
         file_name="myanmar_subtitles.srt",
         mime="text/plain"
     )
 
-    st.divider()
-
-
-st.subheader("⏱️ Scene Timing")
-
-if "subtitle_data" in st.session_state:
-
-    video_duration = 0
-
-    if "uploaded_file" in st.session_state:
-
-        with tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=".mp4"
-        ) as temp_video:
-
-            temp_video.write(
-                st.session_state["uploaded_file"]
-            )
-
-            temp_path = temp_video.name
-
-        cap = cv2.VideoCapture(temp_path)
-
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        frame_count = cap.get(
-            cv2.CAP_PROP_FRAME_COUNT
-        )
-
-        if fps:
-            video_duration = frame_count / fps
-
-        cap.release()
-
-    st.write(
-        f"🎬 Video Duration: "
-        f"{video_duration:.1f} seconds"
-    )
-
-    subtitle_data = (
-        st.session_state["subtitle_data"]
-    )
-
-    fixed_subtitles = []
-
-    for item in subtitle_data:
-
-        start = float(item["start"])
-        end = float(item["end"])
-
-        if start >= video_duration:
-            continue
-
-        end = min(
-            end,
-            video_duration
-        )
-
-        if end > start:
-
-            fixed_subtitles.append({
-                "start": start,
-                "end": end,
-                "text": item["text"]
-            })
-
-    st.session_state["subtitle_data"] = (
-        fixed_subtitles
-    )
-
-    st.success(
-        f"✅ Timing fixed: "
-        f"{len(fixed_subtitles)} subtitles"
-    )
-
 
 st.divider()
 
-st.subheader("🧊 Freeze Frame + Zoom")
 
-freeze_enabled = st.checkbox(
-    "Enable Freeze Frame + Zoom",
-    value=True
+# =========================================================
+# VOICEOVER TIMING
+# =========================================================
+
+st.subheader(
+    "⏱️ Voiceover Timing"
 )
 
-freeze_interval = st.number_input(
-    "⏱️ Freeze Every",
-    min_value=5.0,
-    max_value=60.0,
-    value=10.0,
-    step=1.0
-)
-
-freeze_duration = st.number_input(
-    "🧊 Freeze Duration",
-    min_value=0.5,
-    max_value=5.0,
-    value=2.0,
-    step=0.5
-)
-
-st.caption(
-    "Every 10 seconds → "
-    "2 seconds Freeze + Zoom In → Zoom Out"
-)
-
-
-st.divider()
-
-st.subheader("⏱️ Voiceover Timing")
 
 if "voiceover_file" in st.session_state:
-
-    import subprocess
 
     try:
 
@@ -727,25 +1073,31 @@ if "voiceover_file" in st.session_state:
                 "format=duration",
                 "-of",
                 "default=noprint_wrappers=1:nokey=1",
-                st.session_state["voiceover_file"]
+                st.session_state[
+                    "voiceover_file"
+                ]
             ],
             capture_output=True,
             text=True,
             check=True
         )
 
+
         voice_duration = float(
             result.stdout.strip()
         )
 
-        st.session_state["voice_duration"] = (
-            voice_duration
-        )
+
+        st.session_state[
+            "voice_duration"
+        ] = voice_duration
+
 
         st.write(
             f"🎙️ Voiceover Duration: "
             f"{voice_duration:.1f} seconds"
         )
+
 
     except Exception as e:
 
@@ -756,7 +1108,190 @@ if "voiceover_file" in st.session_state:
 
 st.divider()
 
-st.subheader("🎬 Final Video Export")
+
+# =========================================================
+# SCENE TIMING
+# =========================================================
+#
+# IMPORTANT:
+# Subtitle timing belongs to the VOICEOVER timeline.
+# We DO NOT clamp it to original video duration.
+# =========================================================
+
+st.subheader(
+    "⏱️ Scene Timing"
+)
+
+
+if "subtitle_data" in st.session_state:
+
+    subtitle_duration = 0.0
+
+
+    if "voiceover_file" in st.session_state:
+
+        try:
+
+            probe = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    st.session_state[
+                        "voiceover_file"
+                    ]
+                ],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+
+
+            subtitle_duration = float(
+                probe.stdout.strip()
+            )
+
+
+        except Exception:
+
+            subtitle_duration = 0.0
+
+
+    if subtitle_duration > 0:
+
+        st.write(
+            f"🎙️ Voiceover Timeline: "
+            f"{subtitle_duration:.1f} seconds"
+        )
+
+
+    fixed_subtitles = []
+
+
+    for item in st.session_state[
+        "subtitle_data"
+    ]:
+
+        start = float(
+            item["start"]
+        )
+
+        end = float(
+            item["end"]
+        )
+
+        text = str(
+            item["text"]
+        ).strip()
+
+
+        if not text:
+            continue
+
+
+        if start < 0:
+
+            start = 0
+
+
+        if subtitle_duration > 0:
+
+            if start >= subtitle_duration:
+
+                continue
+
+
+            end = min(
+                end,
+                subtitle_duration
+            )
+
+
+        if end <= start:
+
+            continue
+
+
+        fixed_subtitles.append({
+            "start": start,
+            "end": end,
+            "text": text
+        })
+
+
+    st.session_state[
+        "subtitle_data"
+    ] = fixed_subtitles
+
+
+    st.session_state[
+        "subtitle_timing_source"
+    ] = "voiceover"
+
+
+    st.success(
+        f"✅ Voiceover synced: "
+        f"{len(fixed_subtitles)} subtitles"
+    )
+
+
+st.divider()
+
+
+# =========================================================
+# FREEZE FRAME + ZOOM
+# =========================================================
+
+st.subheader(
+    "🧊 Freeze Frame + Zoom"
+)
+
+
+freeze_enabled = st.checkbox(
+    "Enable Freeze Frame + Zoom",
+    value=True
+)
+
+
+freeze_interval = st.number_input(
+    "⏱️ Freeze Every",
+    min_value=5.0,
+    max_value=60.0,
+    value=10.0,
+    step=1.0
+)
+
+
+freeze_duration = st.number_input(
+    "🧊 Freeze Duration",
+    min_value=0.5,
+    max_value=5.0,
+    value=2.0,
+    step=0.5
+)
+
+
+st.caption(
+    "Every 10 seconds → "
+    "2 seconds Freeze + Zoom In → Zoom Out"
+)
+
+
+st.divider()
+
+
+# =========================================================
+# FINAL VIDEO EXPORT
+# =========================================================
+
+st.subheader(
+    "🎬 Final Video Export"
+)
+
 
 if (
     "voiceover_file" in st.session_state
@@ -764,16 +1299,17 @@ if (
     and "uploaded_file" in st.session_state
 ):
 
-    if st.button("🎬 Create Final Recap Video"):
+
+    if st.button(
+        "🎬 Create Final Recap Video"
+    ):
+
 
         try:
 
-            import subprocess
-            import math
-
-            # -----------------------------------------
+            # =========================================
             # Save original video
-            # -----------------------------------------
+            # =========================================
 
             with open(
                 "original_movie.mp4",
@@ -781,12 +1317,20 @@ if (
             ) as f:
 
                 uploaded = (
-                    st.session_state["uploaded_file"]
+                    st.session_state[
+                        "uploaded_file"
+                    ]
                 )
 
-                if isinstance(uploaded, bytes):
 
-                    f.write(uploaded)
+                if isinstance(
+                    uploaded,
+                    bytes
+                ):
+
+                    f.write(
+                        uploaded
+                    )
 
                 else:
 
@@ -796,13 +1340,15 @@ if (
 
 
             voice_file = (
-                st.session_state["voiceover_file"]
+                st.session_state[
+                    "voiceover_file"
+                ]
             )
 
 
-            # -----------------------------------------
+            # =========================================
             # Get original video duration
-            # -----------------------------------------
+            # =========================================
 
             probe = subprocess.run(
                 [
@@ -820,14 +1366,15 @@ if (
                 check=True
             )
 
+
             video_duration = float(
                 probe.stdout.strip()
             )
 
 
-            # -----------------------------------------
+            # =========================================
             # Get EXACT voiceover duration
-            # -----------------------------------------
+            # =========================================
 
             voice_probe = subprocess.run(
                 [
@@ -845,15 +1392,15 @@ if (
                 check=True
             )
 
+
             voice_duration = float(
                 voice_probe.stdout.strip()
             )
 
-            # Save again so Final Export always uses
-            # the actual voiceover duration.
-            st.session_state["voice_duration"] = (
-                voice_duration
-            )
+
+            st.session_state[
+                "voice_duration"
+            ] = voice_duration
 
 
             st.info(
@@ -862,9 +1409,9 @@ if (
             )
 
 
-            # -----------------------------------------
+            # =========================================
             # Freeze settings
-            # -----------------------------------------
+            # =========================================
 
             if freeze_enabled:
 
@@ -885,9 +1432,9 @@ if (
                 freeze_time = 0
 
 
-            # -----------------------------------------
-            # ASS time
-            # -----------------------------------------
+            # =========================================
+            # ASS time function
+            # =========================================
 
             def ass_time(seconds):
 
@@ -896,21 +1443,26 @@ if (
                     float(seconds)
                 )
 
+
                 hours = int(
                     seconds // 3600
                 )
+
 
                 minutes = int(
                     (seconds % 3600) // 60
                 )
 
+
                 secs = int(
                     seconds % 60
                 )
 
+
                 centiseconds = int(
                     (seconds % 1) * 100
                 )
+
 
                 return (
                     f"{hours}:"
@@ -920,9 +1472,9 @@ if (
                 )
 
 
-            # -----------------------------------------
+            # =========================================
             # Myanmar subtitle wrapping
-            # -----------------------------------------
+            # =========================================
 
             def wrap_myanmar(
                 text,
@@ -935,6 +1487,7 @@ if (
 
                 current = ""
 
+
                 for word in words:
 
                     test = (
@@ -942,6 +1495,7 @@ if (
                         if not current
                         else current + " " + word
                     )
+
 
                     if len(test) <= max_chars:
 
@@ -955,7 +1509,9 @@ if (
                                 current
                             )
 
+
                         current = word
+
 
                 if current:
 
@@ -963,16 +1519,20 @@ if (
                         current
                     )
 
+
                 if len(lines) > 3:
 
                     lines = lines[:3]
 
-                return "\\N".join(lines)
+
+                return "\\N".join(
+                    lines
+                )
 
 
-            # -----------------------------------------
+            # =========================================
             # ASS header
-            # -----------------------------------------
+            # =========================================
 
             ass_content = """[Script Info]
 ScriptType: v4.00+
@@ -989,78 +1549,65 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
 
-            # -----------------------------------------
-            # Subtitle timing
-            # -----------------------------------------
+            # =========================================
+            # SUBTITLE TIMING
+            #
+            # IMPORTANT:
+            # These times come directly from the
+            # generated Myanmar voiceover.
+            #
+            # DO NOT add freeze time here.
+            # =========================================
 
             for item in st.session_state[
                 "subtitle_data"
             ]:
 
-                original_start = float(
+
+                new_start = float(
                     item["start"]
                 )
 
-                original_end = float(
+
+                new_end = float(
                     item["end"]
                 )
 
-                if freeze_enabled:
-
-                    freezes_start = int(
-                        original_start // interval
-                    )
-
-                    freezes_end = int(
-                        original_end // interval
-                    )
-
-                else:
-
-                    freezes_start = 0
-                    freezes_end = 0
-
-
-                new_start = (
-                    original_start
-                    + freezes_start * freeze_time
-                    - 0.25
-                )
-
-                new_end = (
-                    original_end
-                    + freezes_end * freeze_time
-                    - 0.25
-                )
 
                 new_start = max(
                     0,
                     new_start
                 )
 
+
                 new_end = max(
                     new_start + 0.1,
                     new_end
                 )
 
+
                 text = str(
                     item["text"]
                 ).strip()
+
 
                 text = wrap_myanmar(
                     text,
                     24
                 )
 
+
                 text = text.replace(
                     "{",
                     "\\{"
                 )
 
+
                 text = text.replace(
                     "}",
                     "\\}"
                 )
+
 
                 ass_content += (
                     f"Dialogue: 0,"
@@ -1071,9 +1618,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 )
 
 
-            # -----------------------------------------
+            # =========================================
             # Save ASS
-            # -----------------------------------------
+            # =========================================
 
             with open(
                 "myanmar_subtitles.ass",
@@ -1086,9 +1633,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 )
 
 
-            # -----------------------------------------
-            # Build filters
-            # -----------------------------------------
+            # =========================================
+            # Build video filters
+            # =========================================
 
             filter_parts = []
 
@@ -1099,7 +1646,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 segment_count = int(
                     math.ceil(
-                        video_duration / interval
+                        video_duration
+                        / interval
                     )
                 )
 
@@ -1108,9 +1656,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     segment_count
                 ):
 
+
                     start = (
                         i * interval
                     )
+
 
                     end = min(
                         (i + 1) * interval,
@@ -1126,6 +1676,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         f"normal{i}"
                     )
 
+
                     normal_filter = (
                         f"[0:v]"
                         f"trim=start={start}:end={end},"
@@ -1135,9 +1686,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         f"[{normal_label}]"
                     )
 
+
                     filter_parts.append(
                         normal_filter
                     )
+
 
                     labels.append(
                         f"[{normal_label}]"
@@ -1154,10 +1707,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             f"freeze{i}"
                         )
 
+
                         frame_time = max(
                             start,
                             end - 0.10
                         )
+
 
                         freeze_filter = (
                             f"[0:v]"
@@ -1179,9 +1734,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             f"[{freeze_label}]"
                         )
 
+
                         filter_parts.append(
                             freeze_filter
                         )
+
 
                         labels.append(
                             f"[{freeze_label}]"
@@ -1196,6 +1753,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     labels
                 )
 
+
                 concat_filter = (
                     f"{concat_inputs}"
                     f"concat=n={len(labels)}:"
@@ -1204,6 +1762,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     f"format=yuv420p"
                     f"[basevideo]"
                 )
+
 
                 filter_parts.append(
                     concat_filter
@@ -1221,9 +1780,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 )
 
 
-            # -----------------------------------------
-            # Subtitle
-            # -----------------------------------------
+            # =========================================
+            # Subtitle overlay
+            # =========================================
 
             filter_parts.append(
                 "[basevideo]"
@@ -1233,7 +1792,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
             # =========================================
-            # FIX: Calculate actual freeze count
+            # Calculate actual freeze count
             # =========================================
 
             if freeze_enabled:
@@ -1248,9 +1807,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 actual_freeze_count = 0
 
 
-            # -----------------------------------------
+            # =========================================
             # Calculate base video duration
-            # -----------------------------------------
+            # =========================================
 
             base_video_duration = (
                 video_duration
@@ -1261,9 +1820,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             )
 
 
-            # -----------------------------------------
+            # =========================================
             # Calculate extra duration
-            # -----------------------------------------
+            # =========================================
 
             extra_duration = max(
                 0.0,
@@ -1277,15 +1836,16 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 f"{base_video_duration:.2f} sec"
             )
 
+
             st.write(
                 f"➕ Extra Hold Duration: "
                 f"{extra_duration:.2f} sec"
             )
 
 
-            # -----------------------------------------
-            # Extend last video frame
-            # -----------------------------------------
+            # =========================================
+            # Extend final video frame
+            # =========================================
 
             if extra_duration > 0:
 
@@ -1298,9 +1858,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     "[vout2]"
                 )
 
+
                 final_video_label = (
                     "[vout2]"
                 )
+
 
             else:
 
@@ -1309,32 +1871,28 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 )
 
 
-            # -----------------------------------------
+            # =========================================
             # Final filter complex
-            # -----------------------------------------
+            # =========================================
 
             filter_complex = ";".join(
                 filter_parts
             )
 
 
-            # -----------------------------------------
+            # =========================================
             # Output
-            # -----------------------------------------
+            # =========================================
 
             output_video = (
                 "final_movie_recap.mp4"
             )
 
 
-            # =========================================
-            # IMPORTANT
-            # Force final output duration to exactly
-            # match the voiceover duration.
-            # =========================================
-
             command = [
+
                 "ffmpeg",
+
                 "-y",
 
                 "-i",
@@ -1370,6 +1928,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 "-b:a",
                 "128k",
 
+                # Force final duration to voice duration
                 "-t",
                 f"{voice_duration:.3f}",
 
@@ -1377,9 +1936,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             ]
 
 
-            # -----------------------------------------
+            # =========================================
             # Run FFmpeg
-            # -----------------------------------------
+            # =========================================
 
             result = subprocess.run(
                 command,
@@ -1394,16 +1953,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     "❌ FFmpeg Export Failed"
                 )
 
+
                 st.code(
                     result.stderr[-5000:],
                     language="text"
                 )
 
+
             else:
 
-                # -------------------------------------
-                # Verify final video duration
-                # -------------------------------------
+                # =====================================
+                # Verify final duration
+                # =====================================
 
                 final_probe = subprocess.run(
                     [
@@ -1421,6 +1982,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     check=True
                 )
 
+
                 final_duration = float(
                     final_probe.stdout.strip()
                 )
@@ -1430,14 +1992,30 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     "✅ Final Recap Video Created Successfully!"
                 )
 
+
                 st.info(
                     f"🎬 Final Video Duration: "
                     f"{final_duration:.2f} sec"
                 )
 
+
                 st.info(
                     f"🎙️ Voiceover Duration: "
                     f"{voice_duration:.2f} sec"
+                )
+
+
+                # Duration difference
+
+                duration_difference = (
+                    final_duration
+                    - voice_duration
+                )
+
+
+                st.info(
+                    f"⏱️ Duration Difference: "
+                    f"{duration_difference:+.2f} sec"
                 )
 
 
@@ -1449,13 +2027,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     st.download_button(
                         "⬇️ Download Final Video",
                         f,
-                        file_name="final_movie_recap.mp4",
+                        file_name=(
+                            "final_movie_recap.mp4"
+                        ),
                         mime="video/mp4"
                     )
+
 
         except Exception as e:
 
             st.error(
                 f"❌ Final Video Export Error: {e}"
             )
-
