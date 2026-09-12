@@ -1695,7 +1695,7 @@ if blur_enabled:
             # ---------------------------------------------
 
             canvas_result = st_canvas(
-    fill_color="rgba(255,0,0,0.20)",
+    fill_color="rgba(255, 0, 0, 0.20)",
     stroke_width=4,
     stroke_color="#FF0000",
     background_image=preview_frame,
