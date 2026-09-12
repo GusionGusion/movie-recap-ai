@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+
+<style>
+html, body {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+}
+
+#app {
+    width: 100%;
+    max-width: 576px;
+    margin: auto;
+}
+
+#videoWrap {
+    position: relative;
+    width: 100%;
+    background: #000;
+    overflow: hidden;
+    border-radius: 8px;
+}
+
+video {
+    width: 100%;
+    display: block;
+    background: #000;
+}
+
+#blurBox {
+    position: absolute;
+    left: 5%;
+    top: 82%;
+    width: 90%;
+    height: 10%;
+
+    background: rgba(0, 0, 0, 0.35);
+    border: 3px solid #00aaff;
+    box-sizing: border-box;
+
+    touch-action: none;
+    user-select: none;
+}
+
+.handle {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    background: #00aaff;
+    border: 2px solid white;
+    border-radius: 50%;
+    box-sizing: border-box;
+}
+
+.tl { left: -10px; top: -10px; cursor: nwse-resize; }
+.tr { right: -10px; top: -10px; cursor: nesw-resize; }
+.bl { left: -10px; bottom: -10px; cursor: nesw-resize; }
+.br { right: -10px; bottom: -10px; cursor: nwse-resize; }
+
+#controls {
+    padding: 8px 0;
+}
+
+#time {
+    width: 100%;
+}
+
+#hint {
+    text-align: center;
+    color: #888;
+    font-size: 13px;
+    padding: 5px;
+}
+</style>
+</head>
+
+<body>
+
+<div id="app">
+
+    <div id="videoWrap">
+
+        <video
+            id="video"
+            controls
+            playsinline
+            preload="metadata">
+        </video>
+
+        <div id="blurBox">
+
+            <div class="handle tl"></div>
+            <div class="handle tr"></div>
+            <div class="handle bl"></div>
+            <div class="handle br"></div>
+
+        </div>
+
+    </div>
+
+    <div id="hint">
+        🖐 Drag box = Move &nbsp; | &nbsp;
+        🔵 Corner = Resize
+    </div>
+
+</div>
+
+
+<script>
+
+const video = document.getElementById("video");
+const wrap = document.getElementById("videoWrap");
+const box = document.getElementById("blurBox");
+
+let dragging = false;
+let resizing = false;
+
+let resizeCorner = null;
+
+let startX = 0;
+let startY = 0;
+
+let startLeft = 0;
+let startTop = 0;
+
+let startWidth = 0;
+let startHeight = 0;
+
+
+function sendData() {
+
+    const wrapRect = wrap.getBoundingClientRect();
+    const boxRect = box.getBoundingClientRect();
+
+    const x = (boxRect.left - wrapRect.left)
+        / wrapRect.width;
+
+    const y = (boxRect.top - wrapRect.top)
+        / wrapRect.height;
+
+    const width = boxRect.width
+        / wrapRect.width;
+
+    const height = boxRect.height
+        / wrapRect.height;
+
+    const data = {
+
+        x: Math.max(0, Math.min(1, x)),
+
+        y: Math.max(0, Math.min(1, y)),
+
+        width: Math.max(
+            0.01,
+            Math.min(1, width)
+        ),
+
+        height: Math.max(
+            0.01,
+            Math.min(1, height)
+        ),
+
+        time: video.currentTime || 0
+    };
+
+    if (
+        window.Streamlit &&
+        window.Streamlit.setComponentValue
+    ) {
+
+        window.Streamlit.setComponentValue(
+            data
+        );
+    }
+}
+
+
+/* =====================================================
+   VIDEO DATA
+===================================================== */
+
+function loadVideo(data) {
+
+    if (!data) {
+        return;
+    }
+
+    if (
+        typeof data === "string" &&
+        data.startsWith("data:")
+    ) {
+
+        video.src = data;
+
+    } else {
+
+        video.src =
+            "data:video/mp4;base64," + data;
+
+    }
+
+    video.load();
+}
+
+
+/* =====================================================
+   POINTER START
+===================================================== */
+
+box.addEventListener(
+    "pointerdown",
+    function(e) {
+
+        e.preventDefault();
+
+        const target =
+            e.target.classList.contains("handle")
+            ? e.target
+            : null;
+
+        const rect =
+            box.getBoundingClientRect();
+
+        startX = e.clientX;
+        startY = e.clientY;
+
+        startLeft = rect.left;
+        startTop = rect.top;
+
+        startWidth = rect.width;
+        startHeight = rect.height;
+
+        if (target) {
+
+            resizing = true;
+
+            if (
+                target.classList.contains("tl")
+            ) {
+                resizeCorner = "tl";
+            }
+
+            else if (
+                target.classList.contains("tr")
+            ) {
+                resizeCorner = "tr";
+            }
+
+            else if (
+                target.classList.contains("bl")
+            ) {
+                resizeCorner = "bl";
+            }
+
+            else if (
+                target.classList.contains("br")
+            ) {
+                resizeCorner = "br";
+            }
+
+        } else {
+
+            dragging = true;
+        }
+
+        box.setPointerCapture(e.pointerId);
+    }
+);
+
+
+/* =====================================================
+   POINTER MOVE
+===================================================== */
+
+box.addEventListener(
+    "pointermove",
+    function(e) {
+
+        if (!dragging && !resizing) {
+            return;
+        }
+
+        const wrapRect =
+            wrap.getBoundingClientRect();
+
+        const dx =
+            e.clientX - startX;
+
+        const dy =
+            e.clientY - startY;
+
+
+        /* =============================================
+           MOVE
+        ============================================= */
+
+        if (dragging) {
+
+            let newLeft =
+                startLeft
+                - wrapRect.left
+                + dx;
+
+            let newTop =
+                startTop
+                - wrapRect.top
+                + dy;
+
+            newLeft =
+                Math.max(
+                    0,
+                    Math.min(
+                        wrapRect.width -
+                        box.offsetWidth,
+                        newLeft
+                    )
+                );
+
+            newTop =
+                Math.max(
+                    0,
+                    Math.min(
+                        wrapRect.height -
+                        box.offsetHeight,
+                        newTop
+                    )
+                );
+
+            box.style.left =
+                newLeft + "px";
+
+            box.style.top =
+                newTop + "px";
+        }
+
+
+        /* =============================================
+           RESIZE
+        ============================================= */
+
+        if (resizing) {
+
+            let left =
+                startLeft -
+                wrapRect.left;
+
+            let top =
+                startTop -
+                wrapRect.top;
+
+            let width =
+                startWidth;
+
+            let height =
+                startHeight;
+
+
+            const minSize = 30;
+
+
+            if (resizeCorner === "tl") {
+
+                left += dx;
+                top += dy;
+
+                width -= dx;
+                height -= dy;
+            }
+
+
+            if (resizeCorner === "tr") {
+
+                top += dy;
+
+                width += dx;
+                height -= dy;
+            }
+
+
+            if (resizeCorner === "bl") {
+
+                left += dx;
+
+                width -= dx;
+                height += dy;
+            }
+
+
+            if (resizeCorner === "br") {
+
+                width += dx;
+                height += dy;
+            }
+
+
+            if (width < minSize) {
+                width = minSize;
+            }
+
+            if (height < minSize) {
+                height = minSize;
+            }
+
+
+            if (left < 0) {
+                left = 0;
+            }
+
+            if (top < 0) {
+                top = 0;
+            }
+
+
+            if (
+                left + width >
+                wrapRect.width
+            ) {
+
+                width =
+                    wrapRect.width -
+                    left;
+            }
+
+
+            if (
+                top + height >
+                wrapRect.height
+            ) {
+
+                height =
+                    wrapRect.height -
+                    top;
+            }
+
+
+            box.style.left =
+                left + "px";
+
+            box.style.top =
+                top + "px";
+
+            box.style.width =
+                width + "px";
+
+            box.style.height =
+                height + "px";
+        }
+
+
+        sendData();
+    }
+);
+
+
+/* =====================================================
+   POINTER END
+===================================================== */
+
+box.addEventListener(
+    "pointerup",
+    function(e) {
+
+        dragging = false;
+        resizing = false;
+        resizeCorner = null;
+
+        sendData();
+    }
+);
+
+
+box.addEventListener(
+    "pointercancel",
+    function(e) {
+
+        dragging = false;
+        resizing = false;
+        resizeCorner = null;
+
+        sendData();
+    }
+);
+
+
+/* =====================================================
+   VIDEO TIME
+===================================================== */
+
+video.addEventListener(
+    "timeupdate",
+    function() {
+        sendData();
+    }
+);
+
+
+/* =====================================================
+   STREAMLIT COMPONENT
+===================================================== */
+
+function sendReady() {
+
+    if (
+        window.Streamlit &&
+        window.Streamlit.setFrameHeight
+    ) {
+
+        window.Streamlit.setFrameHeight(
+            700
+        );
+    }
+
+    if (
+        window.Streamlit &&
+        window.Streamlit.setComponentValue
+    ) {
+
+        sendData();
+    }
+}
+
+
+if (window.Streamlit) {
+
+    window.Streamlit.events.addEventListener(
+        "streamlit:render",
+        function(event) {
+
+            const args =
+                event.detail.args || {};
+
+            if (args.video) {
+
+                loadVideo(
+                    args.video
+                );
+            }
+
+            if (args.x !== undefined) {
+
+                box.style.left =
+                    (args.x * 100) + "%";
+            }
+
+            if (args.y !== undefined) {
+
+                box.style.top =
+                    (args.y * 100) + "%";
+            }
+
+            if (args.width !== undefined) {
+
+                box.style.width =
+                    (args.width * 100) + "%";
+            }
+
+            if (args.height !== undefined) {
+
+                box.style.height =
+                    (args.height * 100) + "%";
+            }
+
+            sendReady();
+        }
+    );
+}
+
+</script>
+
+</body>
+</html>
