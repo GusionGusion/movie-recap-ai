@@ -4,3 +4,4 @@ opencv-python-headless
 openai-whisper
 edge-tts
 Pillow
+streamlit-drawable-canvas
