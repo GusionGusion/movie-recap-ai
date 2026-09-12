@@ -784,10 +784,7 @@ if (
                     st.session_state["uploaded_file"]
                 )
 
-                if isinstance(
-                    uploaded,
-                    bytes
-                ):
+                if isinstance(uploaded, bytes):
 
                     f.write(uploaded)
 
@@ -825,6 +822,43 @@ if (
 
             video_duration = float(
                 probe.stdout.strip()
+            )
+
+
+            # -----------------------------------------
+            # Get EXACT voiceover duration
+            # -----------------------------------------
+
+            voice_probe = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "default=noprint_wrappers=1:nokey=1",
+                    voice_file
+                ],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+
+            voice_duration = float(
+                voice_probe.stdout.strip()
+            )
+
+            # Save again so Final Export always uses
+            # the actual voiceover duration.
+            st.session_state["voice_duration"] = (
+                voice_duration
+            )
+
+
+            st.info(
+                f"🎙️ Voiceover: "
+                f"{voice_duration:.2f} sec"
             )
 
 
@@ -916,6 +950,7 @@ if (
                     else:
 
                         if current:
+
                             lines.append(
                                 current
                             )
@@ -923,6 +958,7 @@ if (
                         current = word
 
                 if current:
+
                     lines.append(
                         current
                     )
@@ -997,7 +1033,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     - 0.25
                 )
 
-
                 new_start = max(
                     0,
                     new_start
@@ -1008,17 +1043,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     new_end
                 )
 
-
                 text = str(
                     item["text"]
                 ).strip()
-
 
                 text = wrap_myanmar(
                     text,
                     24
                 )
-
 
                 text = text.replace(
                     "{",
@@ -1029,7 +1061,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     "}",
                     "\\}"
                 )
-
 
                 ass_content += (
                     f"Dialogue: 0,"
@@ -1056,7 +1087,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
             # -----------------------------------------
-            # Build video filters
+            # Build filters
             # -----------------------------------------
 
             filter_parts = []
@@ -1114,7 +1145,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
                     # ---------------------------------
-                    # Freeze + Zoom segment
+                    # Freeze + Zoom
                     # ---------------------------------
 
                     if end < video_duration:
@@ -1202,38 +1233,59 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
             # =========================================
-            # NEW: Extend video to match voiceover
+            # FIX: Calculate actual freeze count
             # =========================================
-
-            voice_duration = st.session_state.get(
-                "voice_duration",
-                0
-            )
-
-            freeze_count = 0
 
             if freeze_enabled:
 
-                freeze_count = int(
-                    math.floor(
-                        (video_duration - 0.0001)
-                        / interval
-                    )
+                actual_freeze_count = max(
+                    0,
+                    segment_count - 1
                 )
 
+            else:
+
+                actual_freeze_count = 0
+
+
+            # -----------------------------------------
+            # Calculate base video duration
+            # -----------------------------------------
 
             base_video_duration = (
                 video_duration
-                + freeze_count * freeze_time
+                + (
+                    actual_freeze_count
+                    * freeze_time
+                )
             )
 
 
+            # -----------------------------------------
+            # Calculate extra duration
+            # -----------------------------------------
+
             extra_duration = max(
-                0,
+                0.0,
                 voice_duration
                 - base_video_duration
             )
 
+
+            st.write(
+                f"🎬 Base Video Duration: "
+                f"{base_video_duration:.2f} sec"
+            )
+
+            st.write(
+                f"➕ Extra Hold Duration: "
+                f"{extra_duration:.2f} sec"
+            )
+
+
+            # -----------------------------------------
+            # Extend last video frame
+            # -----------------------------------------
 
             if extra_duration > 0:
 
@@ -1241,7 +1293,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     "[vout]"
                     f"tpad=stop_mode=clone:"
                     f"stop_duration={extra_duration:.3f}:"
-                    f"start_mode=clone"
+                    f"start_mode=clone,"
+                    f"setpts=PTS-STARTPTS"
                     "[vout2]"
                 )
 
@@ -1266,13 +1319,19 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
             # -----------------------------------------
-            # FFmpeg
+            # Output
             # -----------------------------------------
 
             output_video = (
                 "final_movie_recap.mp4"
             )
 
+
+            # =========================================
+            # IMPORTANT
+            # Force final output duration to exactly
+            # match the voiceover duration.
+            # =========================================
 
             command = [
                 "ffmpeg",
@@ -1311,6 +1370,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 "-b:a",
                 "128k",
 
+                "-t",
+                f"{voice_duration:.3f}",
+
                 output_video
             ]
 
@@ -1337,12 +1399,47 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     language="text"
                 )
 
-
             else:
+
+                # -------------------------------------
+                # Verify final video duration
+                # -------------------------------------
+
+                final_probe = subprocess.run(
+                    [
+                        "ffprobe",
+                        "-v",
+                        "error",
+                        "-show_entries",
+                        "format=duration",
+                        "-of",
+                        "default=noprint_wrappers=1:nokey=1",
+                        output_video
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+
+                final_duration = float(
+                    final_probe.stdout.strip()
+                )
+
 
                 st.success(
                     "✅ Final Recap Video Created Successfully!"
                 )
+
+                st.info(
+                    f"🎬 Final Video Duration: "
+                    f"{final_duration:.2f} sec"
+                )
+
+                st.info(
+                    f"🎙️ Voiceover Duration: "
+                    f"{voice_duration:.2f} sec"
+                )
+
 
                 with open(
                     output_video,
@@ -1361,3 +1458,4 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             st.error(
                 f"❌ Final Video Export Error: {e}"
             )
+
