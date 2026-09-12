@@ -28,11 +28,6 @@ st.write("Upload a movie and analyze video information.")
 # =========================================================
 
 def get_audio_duration(media_file):
-    """
-    Read exact media duration using ffprobe.
-    Works for audio and video files.
-    """
-
     result = subprocess.run(
         [
             "ffprobe",
@@ -58,30 +53,12 @@ def get_audio_duration(media_file):
 
 
 def ass_time(seconds):
-    """
-    Convert seconds to ASS timestamp.
-    """
+    seconds = max(0, float(seconds))
 
-    seconds = max(
-        0,
-        float(seconds)
-    )
-
-    hours = int(
-        seconds // 3600
-    )
-
-    minutes = int(
-        (seconds % 3600) // 60
-    )
-
-    secs = int(
-        seconds % 60
-    )
-
-    centiseconds = int(
-        (seconds % 1) * 100
-    )
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    centiseconds = int((seconds % 1) * 100)
 
     return (
         f"{hours}:"
@@ -91,16 +68,7 @@ def ass_time(seconds):
     )
 
 
-def split_myanmar_text(
-    text,
-    max_chars=65
-):
-    """
-    Split Myanmar narration into TTS/subtitle chunks.
-
-    Sentence boundaries are preferred.
-    Long sentences are divided into smaller pieces.
-    """
+def split_myanmar_text(text, max_chars=65):
 
     text = str(text).strip()
 
@@ -130,14 +98,10 @@ def split_myanmar_text(
 
         if len(sentence) <= max_chars:
 
-            chunks.append(
-                sentence
-            )
-
+            chunks.append(sentence)
             continue
 
         words = sentence.split()
-
         current = ""
 
         for word in words:
@@ -155,29 +119,17 @@ def split_myanmar_text(
             else:
 
                 if current:
-
-                    chunks.append(
-                        current
-                    )
+                    chunks.append(current)
 
                 current = word
 
         if current:
-
-            chunks.append(
-                current
-            )
+            chunks.append(current)
 
     return chunks
 
 
-def wrap_myanmar(
-    text,
-    max_chars=24
-):
-    """
-    Wrap Myanmar subtitle into maximum 3 lines.
-    """
+def wrap_myanmar(text, max_chars=24):
 
     words = str(text).split()
 
@@ -185,7 +137,6 @@ def wrap_myanmar(
         return ""
 
     lines = []
-
     current = ""
 
     for word in words:
@@ -203,26 +154,17 @@ def wrap_myanmar(
         else:
 
             if current:
-
-                lines.append(
-                    current
-                )
+                lines.append(current)
 
             current = word
 
     if current:
-
-        lines.append(
-            current
-        )
+        lines.append(current)
 
     if len(lines) > 3:
-
         lines = lines[:3]
 
-    return "\\N".join(
-        lines
-    )
+    return "\\N".join(lines)
 
 
 # =========================================================
@@ -234,9 +176,7 @@ def load_whisper_model(model_name="base"):
 
     import whisper
 
-    return whisper.load_model(
-        model_name
-    )
+    return whisper.load_model(model_name)
 
 
 # =========================================================
@@ -257,7 +197,6 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is not None:
 
-    # Store bytes only once
     video_bytes = uploaded_file.getvalue()
 
     st.session_state[
@@ -269,7 +208,6 @@ if uploaded_file is not None:
         / (1024 * 1024)
     )
 
-    # Create ONE temporary video file
     suffix = os.path.splitext(
         uploaded_file.name
     )[1]
@@ -279,9 +217,7 @@ if uploaded_file is not None:
         suffix=suffix
     ) as temp_file:
 
-        temp_file.write(
-            video_bytes
-        )
+        temp_file.write(video_bytes)
 
         video_path = temp_file.name
 
@@ -289,10 +225,7 @@ if uploaded_file is not None:
         "video_path"
     ] = video_path
 
-    # Read video information
-    cap = cv2.VideoCapture(
-        video_path
-    )
+    cap = cv2.VideoCapture(video_path)
 
     if not cap.isOpened():
 
@@ -384,9 +317,7 @@ if uploaded_file is not None:
             "🎥 Video Preview"
         )
 
-        st.video(
-            video_bytes
-        )
+        st.video(video_bytes)
 
         cap.release()
 
@@ -458,9 +389,7 @@ if "transcript" in st.session_state:
 
     st.text_area(
         "📄 Transcript",
-        st.session_state[
-            "transcript"
-        ],
+        st.session_state["transcript"],
         height=300
     )
 
@@ -530,9 +459,7 @@ if "transcript_result" in st.session_state:
                         f"({start:.1f}s → {end:.1f}s)"
                     )
 
-                    st.write(
-                        text
-                    )
+                    st.write(text)
 
 
 st.divider()
@@ -804,15 +731,6 @@ st.divider()
 
 # =========================================================
 # MYANMAR FEMALE VOICEOVER
-#
-# CPU OPTIMIZED VERSION
-#
-# IMPORTANT:
-# 1. Generate MP3 chunks only.
-# 2. Measure MP3 duration.
-# 3. Concatenate MP3 once.
-# 4. Apply voice speed once.
-# 5. Subtitle timing is calculated from actual TTS timing.
 # =========================================================
 
 st.subheader(
@@ -856,10 +774,6 @@ if "myanmar_recap" in st.session_state:
 
                 st.stop()
 
-            # =========================================
-            # Split narration
-            # =========================================
-
             chunks = split_myanmar_text(
                 text,
                 max_chars=65
@@ -878,35 +792,22 @@ if "myanmar_recap" in st.session_state:
                 f"{len(chunks)} voice segments."
             )
 
-            # =========================================
-            # Working directory
-            # =========================================
-
             work_dir = tempfile.mkdtemp(
                 prefix="movie_recap_voice_"
             )
 
             raw_files = []
-
             raw_durations = []
 
             cumulative_raw_time = 0.0
 
-            progress = st.progress(
-                0
-            )
-
-            # =========================================
-            # TTS async helper
-            # =========================================
+            progress = st.progress(0)
 
             async def create_all_tts():
 
                 results = []
 
-                for index, chunk in enumerate(
-                    chunks
-                ):
+                for index, chunk in enumerate(chunks):
 
                     raw_file = os.path.join(
                         work_dir,
@@ -922,47 +823,27 @@ if "myanmar_recap" in st.session_state:
                         raw_file
                     )
 
-                    results.append(
-                        raw_file
-                    )
+                    results.append(raw_file)
 
                 return results
-
-            # =========================================
-            # Generate all TTS
-            # =========================================
 
             raw_files = asyncio.run(
                 create_all_tts()
             )
 
-            # =========================================
-            # Measure MP3 durations
-            #
-            # NO WAV conversion
-            # =========================================
-
-            for index, raw_file in enumerate(
-                raw_files
-            ):
+            for index, raw_file in enumerate(raw_files):
 
                 duration = get_audio_duration(
                     raw_file
                 )
 
-                raw_durations.append(
-                    duration
-                )
+                raw_durations.append(duration)
 
                 cumulative_raw_time += duration
 
                 progress.progress(
                     (index + 1) / len(raw_files)
                 )
-
-            # =========================================
-            # Create MP3 concat list
-            # =========================================
 
             concat_file = os.path.join(
                 work_dir,
@@ -989,12 +870,6 @@ if "myanmar_recap" in st.session_state:
                     f.write(
                         f"file '{safe_path}'\n"
                     )
-
-            # =========================================
-            # Combine MP3 segments
-            #
-            # Only ONE FFmpeg concat operation
-            # =========================================
 
             combined_mp3 = os.path.join(
                 work_dir,
@@ -1025,10 +900,6 @@ if "myanmar_recap" in st.session_state:
                     concat_result.stderr[-3000:]
                 )
 
-            # =========================================
-            # Apply voice speed ONCE
-            # =========================================
-
             final_voice_file = os.path.join(
                 work_dir,
                 "myanmar_voiceover.mp3"
@@ -1036,7 +907,6 @@ if "myanmar_recap" in st.session_state:
 
             if float(voice_speed) == 1.0:
 
-                # Copy without another encoding pass
                 shutil.copyfile(
                     combined_mp3,
                     final_voice_file
@@ -1068,29 +938,14 @@ if "myanmar_recap" in st.session_state:
                         speed_result.stderr[-3000:]
                     )
 
-            # =========================================
-            # Final actual duration
-            # =========================================
-
             voice_duration = get_audio_duration(
                 final_voice_file
             )
-
-            # =========================================
-            # Predicted duration after speed
-            # =========================================
 
             predicted_duration = (
                 cumulative_raw_time
                 / float(voice_speed)
             )
-
-            # =========================================
-            # Small correction factor
-            #
-            # MP3 concat/encoding can cause tiny
-            # duration differences.
-            # =========================================
 
             if predicted_duration > 0:
 
@@ -1103,7 +958,6 @@ if "myanmar_recap" in st.session_state:
 
                 timing_scale = 1.0
 
-            # Keep correction reasonable
             timing_scale = max(
                 0.98,
                 min(
@@ -1112,17 +966,11 @@ if "myanmar_recap" in st.session_state:
                 )
             )
 
-            # =========================================
-            # Build subtitle timing
-            # =========================================
-
             subtitle_data = []
 
             raw_cursor = 0.0
 
-            for index, chunk in enumerate(
-                chunks
-            ):
+            for index, chunk in enumerate(chunks):
 
                 raw_start = raw_cursor
 
@@ -1131,7 +979,6 @@ if "myanmar_recap" in st.session_state:
                     + raw_durations[index]
                 )
 
-                # Apply speed
                 start_time = (
                     raw_start
                     / float(voice_speed)
@@ -1142,7 +989,6 @@ if "myanmar_recap" in st.session_state:
                     / float(voice_speed)
                 )
 
-                # Small final correction
                 start_time *= timing_scale
                 end_time *= timing_scale
 
@@ -1162,10 +1008,6 @@ if "myanmar_recap" in st.session_state:
                         })
 
                 raw_cursor = raw_end
-
-            # =========================================
-            # Save session state
-            # =========================================
 
             st.session_state[
                 "voiceover_file"
@@ -1299,49 +1141,19 @@ if "subtitle_data" in st.session_state:
         start=1
     ):
 
-        start = float(
-            item["start"]
-        )
+        start = float(item["start"])
+        end = float(item["end"])
+        text = str(item["text"]).strip()
 
-        end = float(
-            item["end"]
-        )
+        start_h = int(start // 3600)
+        start_m = int((start % 3600) // 60)
+        start_s = int(start % 60)
+        start_ms = int((start % 1) * 1000)
 
-        text = str(
-            item["text"]
-        ).strip()
-
-        start_h = int(
-            start // 3600
-        )
-
-        start_m = int(
-            (start % 3600) // 60
-        )
-
-        start_s = int(
-            start % 60
-        )
-
-        start_ms = int(
-            (start % 1) * 1000
-        )
-
-        end_h = int(
-            end // 3600
-        )
-
-        end_m = int(
-            (end % 3600) // 60
-        )
-
-        end_s = int(
-            end % 60
-        )
-
-        end_ms = int(
-            (end % 1) * 1000
-        )
+        end_h = int(end // 3600)
+        end_m = int((end % 3600) // 60)
+        end_s = int(end % 60)
+        end_ms = int((end % 1) * 1000)
 
         start_time = (
             f"{start_h:02d}:"
@@ -1359,20 +1171,15 @@ if "subtitle_data" in st.session_state:
 
         srt_lines.append(
             f"{i}\n"
-            f"{start_time} --> "
-            f"{end_time}\n"
+            f"{start_time} --> {end_time}\n"
             f"{text}\n"
         )
 
-    srt_content = "\n".join(
-        srt_lines
-    )
+    srt_content = "\n".join(srt_lines)
 
     st.download_button(
         "📥 Download Myanmar Subtitle (.srt)",
-        data=srt_content.encode(
-            "utf-8"
-        ),
+        data=srt_content.encode("utf-8"),
         file_name="myanmar_subtitles.srt",
         mime="text/plain"
     )
@@ -1446,9 +1253,7 @@ if "subtitle_data" in st.session_state:
             float(item["start"])
         )
 
-        end = float(
-            item["end"]
-        )
+        end = float(item["end"])
 
         text = str(
             item["text"]
@@ -1460,7 +1265,6 @@ if "subtitle_data" in st.session_state:
         if subtitle_duration > 0:
 
             if start >= subtitle_duration:
-
                 continue
 
             end = min(
@@ -1469,7 +1273,6 @@ if "subtitle_data" in st.session_state:
             )
 
         if end <= start:
-
             continue
 
         fixed_subtitles.append({
@@ -1532,6 +1335,80 @@ st.caption(
     "Every 10 seconds → "
     "2 seconds Freeze + Zoom In → Zoom Out"
 )
+
+
+# =========================================================
+# ORIGINAL SUBTITLE BLUR
+# =========================================================
+
+st.subheader(
+    "🟦 Original Subtitle Blur"
+)
+
+blur_enabled = st.checkbox(
+    "Enable Original Subtitle Blur",
+    value=False
+)
+
+if blur_enabled:
+
+    st.info(
+        "🟦 Blur is applied AFTER Freeze + Zoom "
+        "and BEFORE Myanmar subtitles."
+    )
+
+    blur_x = st.number_input(
+        "↔️ Blur X Position",
+        min_value=0,
+        max_value=575,
+        value=20,
+        step=1
+    )
+
+    blur_y = st.number_input(
+        "↕️ Blur Y Position",
+        min_value=0,
+        max_value=1023,
+        value=880,
+        step=1
+    )
+
+    blur_width = st.number_input(
+        "↔️ Blur Width",
+        min_value=10,
+        max_value=576,
+        value=536,
+        step=1
+    )
+
+    blur_height = st.number_input(
+        "↕️ Blur Height",
+        min_value=10,
+        max_value=1024,
+        value=100,
+        step=1
+    )
+
+    blur_strength = st.slider(
+        "🌫️ Blur Strength",
+        min_value=1,
+        max_value=30,
+        value=12,
+        step=1
+    )
+
+else:
+
+    # Safe defaults when Blur is OFF
+    blur_x = 20
+    blur_y = 880
+    blur_width = 536
+    blur_height = 100
+    blur_strength = 12
+
+    st.caption(
+        "Blur is OFF — original subtitles will remain visible."
+    )
 
 
 st.divider()
@@ -1702,12 +1579,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 )
 
             # =========================================
-            # Video filter
+            # VIDEO FILTER
             # =========================================
 
             filter_parts = []
-
             labels = []
+
+            # =========================================
+            # FREEZE + ZOOM
+            # =========================================
 
             if freeze_enabled:
 
@@ -1718,9 +1598,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     )
                 )
 
-                for i in range(
-                    segment_count
-                ):
+                for i in range(segment_count):
 
                     start = (
                         i * interval
@@ -1753,7 +1631,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     )
 
                     # =================================
-                    # Freeze + Zoom
+                    # FREEZE + ZOOM IN / OUT
                     # =================================
 
                     if end < video_duration:
@@ -1823,17 +1701,104 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 )
 
             # =========================================
-            # Subtitle overlay
+            # ORIGINAL SUBTITLE BLUR
+            #
+            # IMPORTANT:
+            # Blur is applied AFTER Freeze + Zoom
+            # and BEFORE Myanmar subtitles.
+            # =========================================
+
+            video_for_subtitle = "[basevideo]"
+
+            if blur_enabled:
+
+                bx = max(
+                    0,
+                    min(
+                        575,
+                        int(blur_x)
+                    )
+                )
+
+                by = max(
+                    0,
+                    min(
+                        1023,
+                        int(blur_y)
+                    )
+                )
+
+                bw = max(
+                    10,
+                    min(
+                        576 - bx,
+                        int(blur_width)
+                    )
+                )
+
+                bh = max(
+                    10,
+                    min(
+                        1024 - by,
+                        int(blur_height)
+                    )
+                )
+
+                max_radius = max(
+                    1,
+                    min(
+                        bw,
+                        bh
+                    ) // 2
+                )
+
+                br = max(
+                    1,
+                    min(
+                        int(blur_strength),
+                        max_radius
+                    )
+                )
+
+                blur_filter = (
+                    f"[basevideo]"
+                    f"split=2"
+                    f"[blur_main]"
+                    f"[blur_src];"
+                    f"[blur_src]"
+                    f"crop={bw}:{bh}:{bx}:{by},"
+                    f"boxblur="
+                    f"luma_radius={br}:"
+                    f"luma_power=2"
+                    f"[blur_region];"
+                    f"[blur_main]"
+                    f"[blur_region]"
+                    f"overlay={bx}:{by}"
+                    f"[blurredvideo]"
+                )
+
+                filter_parts.append(
+                    blur_filter
+                )
+
+                video_for_subtitle = (
+                    "[blurredvideo]"
+                )
+
+            # =========================================
+            # MYANMAR SUBTITLE
+            #
+            # Added AFTER blur
             # =========================================
 
             filter_parts.append(
-                "[basevideo]"
+                f"{video_for_subtitle}"
                 f"ass={ass_file}"
-                "[vout]"
+                f"[vout]"
             )
 
             # =========================================
-            # Duration calculation
+            # DURATION CALCULATION
             # =========================================
 
             if freeze_enabled:
@@ -1872,7 +1837,30 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             )
 
             # =========================================
-            # Extend final frame
+            # BLUR STATUS
+            # =========================================
+
+            if blur_enabled:
+
+                st.info(
+                    "🟦 Original Subtitle Blur: ON"
+                )
+
+                st.caption(
+                    f"Blur Area: "
+                    f"X={bx}, Y={by}, "
+                    f"W={bw}, H={bh}, "
+                    f"Strength={br}"
+                )
+
+            else:
+
+                st.info(
+                    "⬜ Original Subtitle Blur: OFF"
+                )
+
+            # =========================================
+            # EXTEND FINAL FRAME
             # =========================================
 
             if extra_duration > 0:
@@ -1897,7 +1885,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 )
 
             # =========================================
-            # Filter complex
+            # FILTER COMPLEX
             # =========================================
 
             filter_complex = ";".join(
@@ -1905,7 +1893,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             )
 
             # =========================================
-            # Output
+            # OUTPUT
             # =========================================
 
             output_video = os.path.join(
@@ -1934,7 +1922,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 "-map",
                 "1:a:0",
 
-                # CPU optimized encoder
                 "-c:v",
                 "libx264",
 
@@ -1960,7 +1947,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             ]
 
             # =========================================
-            # Export
+            # EXPORT
             # =========================================
 
             st.info(
