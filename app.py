@@ -806,14 +806,14 @@ st.divider()
 # =========================================================
 # MYANMAR VOICEOVER
 #
-# CPU OPTIMIZED VERSION
+# ONLY THIS SECTION WAS CHANGED
 #
-# IMPORTANT:
-# 1. Generate MP3 chunks only.
-# 2. Measure MP3 duration.
-# 3. Concatenate MP3 once.
-# 4. Apply voice speed once.
-# 5. Subtitle timing is calculated from actual TTS timing.
+# Changes:
+# - Keep Nilar / Thiha
+# - Use Edge-TTS native rate
+# - Keep 1.0x / 1.1x / 1.2x
+# - Use actual MP3 duration for subtitles
+# - No extra FFmpeg speed conversion
 # =========================================================
 
 st.subheader(
@@ -859,10 +859,28 @@ if "myanmar_recap" in st.session_state:
         key="voice_speed_select"
     )
 
+    # Convert app speed to Edge-TTS rate
+    if float(voice_speed) == 1.0:
+
+        tts_rate = "+0%"
+
+    elif float(voice_speed) == 1.1:
+
+        tts_rate = "+10%"
+
+    else:
+
+        tts_rate = "+20%"
+
     st.caption(
-        "CPU optimized: TTS segments are kept as MP3. "
-        "No MP3 → WAV conversion for every segment."
+        "CPU optimized • "
+        "Native Edge-TTS speed • "
+        "Actual TTS duration used for subtitle timing"
     )
+
+    # =====================================================
+    # GENERATE VOICEOVER
+    # =====================================================
 
     if st.button(
         "🎙️ Generate Myanmar Voiceover"
@@ -886,9 +904,9 @@ if "myanmar_recap" in st.session_state:
 
                 st.stop()
 
-            # =========================================
+            # =============================================
             # Split narration
-            # =========================================
+            # =============================================
 
             chunks = split_myanmar_text(
                 text,
@@ -908,9 +926,9 @@ if "myanmar_recap" in st.session_state:
                 f"{len(chunks)} voice segments."
             )
 
-            # =========================================
+            # =============================================
             # Working directory
-            # =========================================
+            # =============================================
 
             work_dir = tempfile.mkdtemp(
                 prefix="movie_recap_voice_"
@@ -926,9 +944,11 @@ if "myanmar_recap" in st.session_state:
                 0
             )
 
-            # =========================================
-            # TTS async helper
-            # =========================================
+            # =============================================
+            # TTS generation
+            #
+            # Edge-TTS native rate is used.
+            # =============================================
 
             async def create_all_tts():
 
@@ -944,8 +964,11 @@ if "myanmar_recap" in st.session_state:
                     )
 
                     communicate = edge_tts.Communicate(
-                        chunk,
-                        selected_voice
+                        text=chunk,
+                        voice=selected_voice,
+                        rate=tts_rate,
+                        volume="+0%",
+                        pitch="+0Hz"
                     )
 
                     await communicate.save(
@@ -958,19 +981,17 @@ if "myanmar_recap" in st.session_state:
 
                 return results
 
-            # =========================================
+            # =============================================
             # Generate all TTS
-            # =========================================
+            # =============================================
 
             raw_files = asyncio.run(
                 create_all_tts()
             )
 
-            # =========================================
+            # =============================================
             # Measure MP3 durations
-            #
-            # NO WAV conversion
-            # =========================================
+            # =============================================
 
             for index, raw_file in enumerate(
                 raw_files
@@ -990,9 +1011,9 @@ if "myanmar_recap" in st.session_state:
                     (index + 1) / len(raw_files)
                 )
 
-            # =========================================
+            # =============================================
             # Create MP3 concat list
-            # =========================================
+            # =============================================
 
             concat_file = os.path.join(
                 work_dir,
@@ -1020,11 +1041,9 @@ if "myanmar_recap" in st.session_state:
                         f"file '{safe_path}'\n"
                     )
 
-            # =========================================
+            # =============================================
             # Combine MP3 segments
-            #
-            # Only ONE FFmpeg concat operation
-            # =========================================
+            # =============================================
 
             combined_mp3 = os.path.join(
                 work_dir,
@@ -1055,72 +1074,43 @@ if "myanmar_recap" in st.session_state:
                     concat_result.stderr[-3000:]
                 )
 
-            # =========================================
-            # Apply voice speed ONCE
-            # =========================================
+            # =============================================
+            # Final voice file
+            #
+            # Speed is already applied by Edge-TTS.
+            # Do NOT run atempo again.
+            # =============================================
 
             final_voice_file = os.path.join(
                 work_dir,
                 "myanmar_voiceover.mp3"
             )
 
-            if float(voice_speed) == 1.0:
+            shutil.copyfile(
+                combined_mp3,
+                final_voice_file
+            )
 
-                # Copy without another encoding pass
-                shutil.copyfile(
-                    combined_mp3,
-                    final_voice_file
-                )
-
-            else:
-
-                speed_result = subprocess.run(
-                    [
-                        "ffmpeg",
-                        "-y",
-                        "-i",
-                        combined_mp3,
-                        "-filter:a",
-                        f"atempo={float(voice_speed)}",
-                        "-c:a",
-                        "libmp3lame",
-                        "-b:a",
-                        "128k",
-                        final_voice_file
-                    ],
-                    capture_output=True,
-                    text=True
-                )
-
-                if speed_result.returncode != 0:
-
-                    raise RuntimeError(
-                        speed_result.stderr[-3000:]
-                    )
-
-            # =========================================
-            # Final actual duration
-            # =========================================
+            # =============================================
+            # Read actual final duration
+            # =============================================
 
             voice_duration = get_audio_duration(
                 final_voice_file
             )
 
-            # =========================================
-            # Predicted duration after speed
-            # =========================================
+            # =============================================
+            # Calculate subtitle timing
+            # from actual generated TTS segments
+            # =============================================
+
+            subtitle_data = []
+
+            raw_cursor = 0.0
 
             predicted_duration = (
                 cumulative_raw_time
-                / float(voice_speed)
             )
-
-            # =========================================
-            # Small correction factor
-            #
-            # MP3 concat/encoding can cause tiny
-            # duration differences.
-            # =========================================
 
             if predicted_duration > 0:
 
@@ -1133,7 +1123,7 @@ if "myanmar_recap" in st.session_state:
 
                 timing_scale = 1.0
 
-            # Keep correction reasonable
+            # Small correction only
             timing_scale = max(
                 0.98,
                 min(
@@ -1141,14 +1131,6 @@ if "myanmar_recap" in st.session_state:
                     timing_scale
                 )
             )
-
-            # =========================================
-            # Build subtitle timing
-            # =========================================
-
-            subtitle_data = []
-
-            raw_cursor = 0.0
 
             for index, chunk in enumerate(
                 chunks
@@ -1161,41 +1143,45 @@ if "myanmar_recap" in st.session_state:
                     + raw_durations[index]
                 )
 
-                # Apply speed
                 start_time = (
                     raw_start
-                    / float(voice_speed)
+                    * timing_scale
                 )
 
                 end_time = (
                     raw_end
-                    / float(voice_speed)
+                    * timing_scale
                 )
 
-                # Small final correction
-                start_time *= timing_scale
-                end_time *= timing_scale
+                start_time = max(
+                    0.0,
+                    min(
+                        start_time,
+                        voice_duration
+                    )
+                )
 
-                if start_time < voice_duration:
-
-                    end_time = min(
+                end_time = max(
+                    start_time + 0.05,
+                    min(
                         end_time,
                         voice_duration
                     )
+                )
 
-                    if end_time > start_time:
+                if start_time < voice_duration:
 
-                        subtitle_data.append({
-                            "start": start_time,
-                            "end": end_time,
-                            "text": chunk
-                        })
+                    subtitle_data.append({
+                        "start": start_time,
+                        "end": end_time,
+                        "text": chunk
+                    })
 
                 raw_cursor = raw_end
 
-            # =========================================
+            # =============================================
             # Save session state
-            # =========================================
+            # =============================================
 
             st.session_state[
                 "voiceover_file"
@@ -1225,6 +1211,14 @@ if "myanmar_recap" in st.session_state:
                 "selected_voice"
             ] = selected_voice
 
+            st.session_state[
+                "tts_rate"
+            ] = tts_rate
+
+            # =============================================
+            # Results
+            # =============================================
+
             st.success(
                 f"✅ Myanmar {voice_gender} voiceover generated!"
             )
@@ -1240,12 +1234,22 @@ if "myanmar_recap" in st.session_state:
             )
 
             st.info(
+                f"🎚️ Voice Speed: "
+                f"{voice_speed:.1f}×"
+            )
+
+            st.info(
+                f"🗣️ Voice: "
+                f"{selected_voice}"
+            )
+
+            st.info(
                 "🔊 Subtitle timing source: "
                 "Actual TTS audio duration"
             )
 
             st.info(
-                "⚡ CPU optimized TTS pipeline completed."
+                "⚡ Native Edge-TTS speed control completed."
             )
 
         except Exception as e:
