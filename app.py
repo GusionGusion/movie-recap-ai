@@ -1,17 +1,20 @@
 import streamlit as st
 import os
-from google import genai
 import cv2
 import tempfile
 import subprocess
-import math
 import re
 import asyncio
 import shutil
 
+from google import genai
 from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 
+
+# =========================================================
+# PAGE
+# =========================================================
 
 st.set_page_config(
     page_title="Movie Recap AI",
@@ -27,68 +30,141 @@ st.write("Upload a movie and analyze video information.")
 # HELPERS
 # =========================================================
 
-def get_audio_duration(media_file):
+def run_cmd(cmd):
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            result.stderr[-5000:]
+        )
+
+    return result
+
+
+def get_media_duration(path):
     try:
         result = subprocess.run(
             [
                 "ffprobe",
                 "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                media_file
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                path
             ],
             capture_output=True,
             text=True
         )
-        return float(result.stdout.strip())
+
+        return float(
+            result.stdout.strip()
+        )
+
     except Exception:
         return 0.0
 
 
 def ass_time(seconds):
-    seconds = max(0, float(seconds))
+    seconds = max(
+        0,
+        float(seconds)
+    )
+
     h = int(seconds // 3600)
     m = int((seconds % 3600) // 60)
     s = int(seconds % 60)
-    cs = int(round((seconds - int(seconds)) * 100))
+
+    cs = int(
+        round(
+            (seconds - int(seconds)) * 100
+        )
+    )
 
     if cs >= 100:
         s += 1
         cs = 0
 
-    return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+    return (
+        f"{h}:"
+        f"{m:02d}:"
+        f"{s:02d}."
+        f"{cs:02d}"
+    )
 
 
-def split_myanmar_text(text, max_chars=65):
-    text = re.sub(r"\s+", " ", str(text)).strip()
+def split_myanmar_text(
+    text,
+    max_chars=65
+):
+    text = re.sub(
+        r"\s+",
+        " ",
+        str(text)
+    ).strip()
 
     if not text:
         return []
 
-    parts = re.split(r"(?<=[။!?])\s+|(?<=[.!?])\s+", text)
+    parts = re.split(
+        r"(?<=[။!?])\s+|(?<=[.!?])\s+",
+        text
+    )
 
     chunks = []
     current = ""
 
     for part in parts:
+
         part = part.strip()
 
         if not part:
             continue
 
-        if len(current) + len(part) + 1 <= max_chars:
-            current = (current + " " + part).strip()
+        if (
+            len(current)
+            + len(part)
+            + 1
+            <= max_chars
+        ):
+            current = (
+                current + " " + part
+            ).strip()
+
         else:
+
             if current:
-                chunks.append(current)
+                chunks.append(
+                    current
+                )
 
             if len(part) <= max_chars:
                 current = part
+
             else:
-                for i in range(0, len(part), max_chars):
-                    piece = part[i:i + max_chars]
-                    if i + max_chars < len(part):
-                        chunks.append(piece)
+
+                for i in range(
+                    0,
+                    len(part),
+                    max_chars
+                ):
+
+                    piece = part[
+                        i:i + max_chars
+                    ]
+
+                    if (
+                        i + max_chars
+                        < len(part)
+                    ):
+                        chunks.append(
+                            piece
+                        )
+
                     else:
                         current = piece
 
@@ -98,7 +174,10 @@ def split_myanmar_text(text, max_chars=65):
     return chunks
 
 
-def wrap_myanmar(text, max_chars=24):
+def wrap_myanmar(
+    text,
+    max_chars=24
+):
     text = str(text).strip()
 
     if len(text) <= max_chars:
@@ -107,36 +186,59 @@ def wrap_myanmar(text, max_chars=24):
     words = text.split()
 
     if len(words) == 1:
+
         lines = []
         current = ""
 
         for ch in text:
+
             if len(current) >= max_chars:
-                lines.append(current)
+                lines.append(
+                    current
+                )
                 current = ""
+
             current += ch
 
         if current:
-            lines.append(current)
+            lines.append(
+                current
+            )
 
-        return "\\N".join(lines[:3])
+        return "\\N".join(
+            lines[:3]
+        )
 
     lines = []
     current = ""
 
     for word in words:
-        if len(current) + len(word) + 1 <= max_chars:
-            current = (current + " " + word).strip()
+
+        if (
+            len(current)
+            + len(word)
+            + 1
+            <= max_chars
+        ):
+            current = (
+                current + " " + word
+            ).strip()
+
         else:
+
             if current:
-                lines.append(current)
+                lines.append(
+                    current
+                )
 
             current = word
 
     if current:
         lines.append(current)
 
-    return "\\N".join(lines[:3])
+    return "\\N".join(
+        lines[:3]
+    )
 
 
 def extract_preview_frame(
@@ -145,17 +247,28 @@ def extract_preview_frame(
     width=576,
     height=1024
 ):
-    cap = cv2.VideoCapture(video_path)
+
+    cap = cv2.VideoCapture(
+        video_path
+    )
 
     if not cap.isOpened():
         return None
 
-    cap.set(cv2.CAP_PROP_POS_MSEC, time_seconds * 1000)
+    cap.set(
+        cv2.CAP_PROP_POS_MSEC,
+        time_seconds * 1000
+    )
 
     ok, frame = cap.read()
 
     if not ok:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
+        cap.set(
+            cv2.CAP_PROP_POS_FRAMES,
+            0
+        )
+
         ok, frame = cap.read()
 
     cap.release()
@@ -163,14 +276,27 @@ def extract_preview_frame(
     if not ok:
         return None
 
-    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    frame = cv2.cvtColor(
+        frame,
+        cv2.COLOR_BGR2RGB
+    )
 
     h, w = frame.shape[:2]
 
-    scale = min(width / w, height / h)
+    scale = min(
+        width / w,
+        height / h
+    )
 
-    new_w = max(1, int(w * scale))
-    new_h = max(1, int(h * scale))
+    new_w = max(
+        1,
+        int(w * scale)
+    )
+
+    new_h = max(
+        1,
+        int(h * scale)
+    )
 
     frame = cv2.resize(
         frame,
@@ -184,8 +310,13 @@ def extract_preview_frame(
         "black"
     )
 
-    x = (width - new_w) // 2
-    y = (height - new_h) // 2
+    x = (
+        width - new_w
+    ) // 2
+
+    y = (
+        height - new_h
+    ) // 2
 
     canvas.paste(
         Image.fromarray(frame),
@@ -201,6 +332,7 @@ def make_blur_drawing(
     width,
     height
 ):
+
     return {
         "version": "7.0.0",
         "objects": [
@@ -239,17 +371,37 @@ def normalize_blur_box(
     canvas_w=576,
     canvas_h=1024
 ):
-    x = max(0, min(float(x), canvas_w - 1))
-    y = max(0, min(float(y), canvas_h - 1))
+
+    x = max(
+        0,
+        min(
+            float(x),
+            canvas_w - 1
+        )
+    )
+
+    y = max(
+        0,
+        min(
+            float(y),
+            canvas_h - 1
+        )
+    )
 
     width = max(
         10,
-        min(float(width), canvas_w - x)
+        min(
+            float(width),
+            canvas_w - x
+        )
     )
 
     height = max(
         10,
-        min(float(height), canvas_h - y)
+        min(
+            float(height),
+            canvas_h - y
+        )
     )
 
     return (
@@ -260,31 +412,68 @@ def normalize_blur_box(
     )
 
 
+# =========================================================
+# SUBTITLE
+# =========================================================
+
 def create_srt(subtitles):
+
     lines = []
 
-    for i, item in enumerate(subtitles, 1):
-        start = float(item["start"])
-        end = float(item["end"])
-        text = str(item["text"]).strip()
+    def srt_time(sec):
 
-        def srt_time(sec):
-            sec = max(0, sec)
+        sec = max(
+            0,
+            float(sec)
+        )
 
-            h = int(sec // 3600)
-            m = int((sec % 3600) // 60)
-            s = int(sec % 60)
-            ms = int(round((sec - int(sec)) * 1000))
+        h = int(sec // 3600)
+        m = int(
+            (sec % 3600) // 60
+        )
+        s = int(sec % 60)
 
-            if ms >= 1000:
-                s += 1
-                ms = 0
+        ms = int(
+            round(
+                (
+                    sec
+                    - int(sec)
+                ) * 1000
+            )
+        )
 
-            return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+        if ms >= 1000:
+            s += 1
+            ms = 0
+
+        return (
+            f"{h:02d}:"
+            f"{m:02d}:"
+            f"{s:02d},"
+            f"{ms:03d}"
+        )
+
+    for i, item in enumerate(
+        subtitles,
+        1
+    ):
+
+        start = float(
+            item["start"]
+        )
+
+        end = float(
+            item["end"]
+        )
+
+        text = str(
+            item["text"]
+        ).strip()
 
         lines.append(
             f"{i}\n"
-            f"{srt_time(start)} --> {srt_time(end)}\n"
+            f"{srt_time(start)} --> "
+            f"{srt_time(end)}\n"
             f"{text}\n"
         )
 
@@ -292,6 +481,7 @@ def create_srt(subtitles):
 
 
 def create_ass(subtitles):
+
     header = """[Script Info]
 ScriptType: v4.00+
 PlayResX: 576
@@ -309,18 +499,36 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     lines = [header]
 
     for item in subtitles:
-        start = ass_time(item["start"])
-        end = ass_time(item["end"])
-        text = wrap_myanmar(item["text"])
+
+        start = ass_time(
+            item["start"]
+        )
+
+        end = ass_time(
+            item["end"]
+        )
+
+        text = wrap_myanmar(
+            item["text"]
+        )
 
         text = (
             text
-            .replace("{", "\\{")
-            .replace("}", "\\}")
+            .replace(
+                "{",
+                "\\{"
+            )
+            .replace(
+                "}",
+                "\\}"
+            )
         )
 
         lines.append(
-            f"Dialogue: 0,{start},{end},Myanmar,,0,0,0,,{text}"
+            "Dialogue: "
+            f"0,{start},{end},"
+            f"Myanmar,,0,0,0,,"
+            f"{text}"
         )
 
     return "\n".join(lines)
@@ -331,13 +539,19 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 # =========================================================
 
 @st.cache_resource
-def load_whisper_model(model_name):
+def load_whisper_model(
+    model_name
+):
+
     import whisper
-    return whisper.load_model(model_name)
+
+    return whisper.load_model(
+        model_name
+    )
 
 
 # =========================================================
-# VIDEO UPLOAD
+# UPLOAD
 # =========================================================
 
 uploaded_file = st.file_uploader(
@@ -351,12 +565,20 @@ uploaded_file = st.file_uploader(
     ]
 )
 
+
 if uploaded_file:
 
-    file_size_mb = uploaded_file.size / (1024 * 1024)
+    file_size_mb = (
+        uploaded_file.size
+        / (1024 * 1024)
+    )
 
     if file_size_mb > 200:
-        st.error("❌ Maximum file size is 200MB.")
+
+        st.error(
+            "❌ Maximum file size is 200MB."
+        )
+
         st.stop()
 
     temp_dir = tempfile.mkdtemp(
@@ -368,14 +590,23 @@ if uploaded_file:
         uploaded_file.name
     )
 
-    with open(input_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
+    with open(
+        input_path,
+        "wb"
+    ) as f:
+
+        f.write(
+            uploaded_file.getbuffer()
+        )
 
     st.success(
-        f"✅ Uploaded: {uploaded_file.name}"
+        f"✅ Uploaded: "
+        f"{uploaded_file.name}"
     )
 
-    cap = cv2.VideoCapture(input_path)
+    cap = cv2.VideoCapture(
+        input_path
+    )
 
     if cap.isOpened():
 
@@ -394,28 +625,37 @@ if uploaded_file:
         )
 
         width = int(
-            cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+            cap.get(
+                cv2.CAP_PROP_FRAME_WIDTH
+            )
         )
 
         height = int(
-            cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            cap.get(
+                cv2.CAP_PROP_FRAME_HEIGHT
+            )
         )
 
         cap.release()
 
         st.info(
-            f"🎬 Video Duration: {duration:.1f} seconds"
+            f"🎬 Video Duration: "
+            f"{duration:.1f} seconds"
         )
 
         st.write(
-            f"📐 Resolution: {width} × {height}"
+            f"📐 Resolution: "
+            f"{width} × {height}"
         )
 
         st.write(
             f"🎞️ FPS: {fps:.2f}"
         )
 
-        st.video(input_path)
+        st.video(
+            input_path
+        )
+
 
         # =================================================
         # TRANSCRIPT
@@ -423,11 +663,16 @@ if uploaded_file:
 
         st.divider()
 
-        st.subheader("📝 Transcript")
+        st.subheader(
+            "📝 Transcript"
+        )
 
         whisper_size = st.selectbox(
             "Whisper Model",
-            ["tiny", "base"],
+            [
+                "tiny",
+                "base"
+            ],
             index=0
         )
 
@@ -442,8 +687,10 @@ if uploaded_file:
 
                 try:
 
-                    model = load_whisper_model(
-                        whisper_size
+                    model = (
+                        load_whisper_model(
+                            whisper_size
+                        )
                     )
 
                     result = model.transcribe(
@@ -452,9 +699,11 @@ if uploaded_file:
                         fp16=False
                     )
 
-                    transcript = result.get(
-                        "text",
-                        ""
+                    transcript = (
+                        result.get(
+                            "text",
+                            ""
+                        )
                     )
 
                     st.session_state[
@@ -466,14 +715,19 @@ if uploaded_file:
                     )
 
                 except Exception as e:
+
                     st.error(
                         f"❌ Whisper Error: {e}"
                     )
 
-        transcript = st.session_state.get(
-            "transcript",
-            ""
+
+        transcript = (
+            st.session_state.get(
+                "transcript",
+                ""
+            )
         )
+
 
         if transcript:
 
@@ -483,9 +737,10 @@ if uploaded_file:
                 height=200
             )
 
-            # =============================================
+
+            # =================================================
             # SCENE ANALYSIS
-            # =============================================
+            # =================================================
 
             st.divider()
 
@@ -512,14 +767,20 @@ if uploaded_file:
                 ):
 
                     block = " ".join(
-                        sentences[i:i + 5]
+                        sentences[
+                            i:i + 5
+                        ]
                     ).strip()
 
                     if block:
+
                         scenes.append(
                             {
-                                "scene": len(scenes) + 1,
-                                "text": block
+                                "scene":
+                                len(scenes) + 1,
+
+                                "text":
+                                block
                             }
                         )
 
@@ -528,26 +789,33 @@ if uploaded_file:
                 ] = scenes
 
                 st.success(
-                    f"✅ {len(scenes)} scenes created."
+                    f"✅ {len(scenes)} "
+                    f"scenes created."
                 )
 
-            scenes = st.session_state.get(
-                "scenes",
-                []
+
+            scenes = (
+                st.session_state.get(
+                    "scenes",
+                    []
+                )
             )
 
             for scene in scenes:
+
                 st.write(
-                    f"### Scene {scene['scene']}"
+                    f"### Scene "
+                    f"{scene['scene']}"
                 )
 
                 st.write(
                     scene["text"]
                 )
 
-            # =============================================
-            # GEMINI
-            # =============================================
+
+            # =================================================
+            # AI SCENE ANALYSIS
+            # =================================================
 
             st.divider()
 
@@ -562,9 +830,11 @@ if uploaded_file:
 
                 try:
 
-                    api_key = st.secrets[
-                        "GEMINI_API_KEY"
-                    ]
+                    api_key = (
+                        st.secrets[
+                            "GEMINI_API_KEY"
+                        ]
+                    )
 
                     client = genai.Client(
                         api_key=api_key
@@ -581,15 +851,18 @@ Rules:
 3. Identify important actions.
 4. Identify characters when possible.
 5. Explain important visual moments.
-6. Keep the scenes suitable for recap video creation.
+6. Keep scenes suitable for recap video creation.
 
 Transcript:
+
 {transcript}
 """
 
-                    response = client.models.generate_content(
-                        model="gemini-3.6-flash",
-                        contents=prompt
+                    response = (
+                        client.models.generate_content(
+                            model="gemini-3.6-flash",
+                            contents=prompt
+                        )
                     )
 
                     st.session_state[
@@ -601,9 +874,11 @@ Transcript:
                     )
 
                 except Exception as e:
+
                     st.error(
                         f"❌ Gemini Error: {e}"
                     )
+
 
             ai_scene_analysis = (
                 st.session_state.get(
@@ -613,15 +888,17 @@ Transcript:
             )
 
             if ai_scene_analysis:
+
                 st.text_area(
                     "AI Scene Analysis",
                     ai_scene_analysis,
                     height=300
                 )
 
-            # =============================================
+
+            # =================================================
             # RECAP SCRIPT
-            # =============================================
+            # =================================================
 
             st.divider()
 
@@ -636,9 +913,11 @@ Transcript:
 
                 try:
 
-                    api_key = st.secrets[
-                        "GEMINI_API_KEY"
-                    ]
+                    api_key = (
+                        st.secrets[
+                            "GEMINI_API_KEY"
+                        ]
+                    )
 
                     client = genai.Client(
                         api_key=api_key
@@ -663,12 +942,15 @@ Rules:
 7. Each scene should contain narration.
 
 Source:
+
 {source}
 """
 
-                    response = client.models.generate_content(
-                        model="gemini-3.6-flash",
-                        contents=prompt
+                    response = (
+                        client.models.generate_content(
+                            model="gemini-3.6-flash",
+                            contents=prompt
+                        )
                     )
 
                     st.session_state[
@@ -680,25 +962,31 @@ Source:
                     )
 
                 except Exception as e:
+
                     st.error(
                         f"❌ Gemini Error: {e}"
                     )
 
-            recap_script = st.session_state.get(
-                "recap_script",
-                ""
+
+            recap_script = (
+                st.session_state.get(
+                    "recap_script",
+                    ""
+                )
             )
 
             if recap_script:
+
                 st.text_area(
                     "Recap Script",
                     recap_script,
                     height=350
                 )
 
-                # =========================================
-                # MYANMAR TRANSLATION
-                # =========================================
+
+                # =================================================
+                # MYANMAR RECAP
+                # =================================================
 
                 st.divider()
 
@@ -713,9 +1001,11 @@ Source:
 
                     try:
 
-                        api_key = st.secrets[
-                            "GEMINI_API_KEY"
-                        ]
+                        api_key = (
+                            st.secrets[
+                                "GEMINI_API_KEY"
+                            ]
+                        )
 
                         client = genai.Client(
                             api_key=api_key
@@ -726,22 +1016,25 @@ Translate and adapt the following movie
 recap narration into natural Myanmar Burmese.
 
 Rules:
-1. Preserve the exact meaning.
+1. Preserve exact meaning.
 2. Do not invent information.
 3. Keep chronological order.
 4. Make it natural for Myanmar voiceover.
 5. Keep numbered scenes.
-6. Use Burmese ending "ဒယ်" instead of "တယ်"
-   where natural.
+6. Use Burmese ending "ဒယ်"
+   instead of "တယ်" where natural.
 7. Avoid overly formal wording.
 
 Script:
+
 {recap_script}
 """
 
-                        response = client.models.generate_content(
-                            model="gemini-3.6-flash",
-                            contents=prompt
+                        response = (
+                            client.models.generate_content(
+                                model="gemini-3.6-flash",
+                                contents=prompt
+                            )
                         )
 
                         st.session_state[
@@ -753,9 +1046,11 @@ Script:
                         )
 
                     except Exception as e:
+
                         st.error(
                             f"❌ Gemini Error: {e}"
                         )
+
 
                 myanmar_recap = (
                     st.session_state.get(
@@ -772,9 +1067,10 @@ Script:
                         height=350
                     )
 
-                    # =====================================
-                    # MYANMAR VOICEOVER
-                    # =====================================
+
+                    # =================================================
+                    # VOICEOVER
+                    # =================================================
 
                     st.divider()
 
@@ -792,6 +1088,7 @@ Script:
                         value=1.0
                     )
 
+
                     if st.button(
                         "🎙️ Generate Myanmar Female Voiceover",
                         use_container_width=True
@@ -808,24 +1105,30 @@ Script:
                                 flags=re.IGNORECASE
                             )
 
-                            chunks = split_myanmar_text(
-                                text,
-                                65
+                            chunks = (
+                                split_myanmar_text(
+                                    text,
+                                    65
+                                )
                             )
 
                             mp3_files = []
                             durations = []
 
-                            for i, chunk in enumerate(chunks):
+                            for i, chunk in enumerate(
+                                chunks
+                            ):
 
                                 mp3_path = os.path.join(
                                     temp_dir,
                                     f"tts_{i:04d}.mp3"
                                 )
 
-                                communicate = edge_tts.Communicate(
-                                    chunk,
-                                    "my-MM-NilarNeural"
+                                communicate = (
+                                    edge_tts.Communicate(
+                                        chunk,
+                                        "my-MM-NilarNeural"
+                                    )
                                 )
 
                                 await communicate.save(
@@ -837,10 +1140,11 @@ Script:
                                 )
 
                                 durations.append(
-                                    get_audio_duration(
+                                    get_media_duration(
                                         mp3_path
                                     )
                                 )
+
 
                             concat_file = os.path.join(
                                 temp_dir,
@@ -854,16 +1158,18 @@ Script:
                             ) as f:
 
                                 for path in mp3_files:
+
                                     f.write(
                                         f"file '{path}'\n"
                                     )
+
 
                             raw_voice = os.path.join(
                                 temp_dir,
                                 "voice_raw.mp3"
                             )
 
-                            subprocess.run(
+                            run_cmd(
                                 [
                                     "ffmpeg",
                                     "-y",
@@ -876,10 +1182,9 @@ Script:
                                     "-c",
                                     "copy",
                                     raw_voice
-                                ],
-                                stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL
+                                ]
                             )
+
 
                             final_voice = os.path.join(
                                 temp_dir,
@@ -904,41 +1209,46 @@ Script:
                                 remaining = speed
 
                                 while remaining > 2.0:
+
                                     filters.append(
                                         "atempo=2.0"
                                     )
+
                                     remaining /= 2.0
 
                                 while remaining < 0.5:
+
                                     filters.append(
                                         "atempo=0.5"
                                     )
+
                                     remaining /= 0.5
 
                                 filters.append(
                                     f"atempo={remaining:.6f}"
                                 )
 
-                                subprocess.run(
+                                run_cmd(
                                     [
                                         "ffmpeg",
                                         "-y",
                                         "-i",
                                         raw_voice,
                                         "-filter:a",
-                                        ",".join(filters),
+                                        ",".join(
+                                            filters
+                                        ),
                                         "-c:a",
                                         "libmp3lame",
                                         "-q:a",
                                         "4",
                                         final_voice
-                                    ],
-                                    stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL
+                                    ]
                                 )
 
+
                             actual_duration = (
-                                get_audio_duration(
+                                get_media_duration(
                                     final_voice
                                 )
                             )
@@ -959,11 +1269,17 @@ Script:
                                     / predicted
                                 )
 
-                                if 0.98 <= scale <= 1.02:
+                                if (
+                                    0.98
+                                    <= scale
+                                    <= 1.02
+                                ):
+
                                     scaled_durations = [
                                         d * scale
                                         for d in scaled_durations
                                     ]
+
 
                             subtitles = []
 
@@ -976,13 +1292,19 @@ Script:
 
                                 subtitles.append(
                                     {
-                                        "start": current,
-                                        "end": current + d,
-                                        "text": chunk
+                                        "start":
+                                        current,
+
+                                        "end":
+                                        current + d,
+
+                                        "text":
+                                        chunk
                                     }
                                 )
 
                                 current += d
+
 
                             st.session_state[
                                 "voice_path"
@@ -995,6 +1317,7 @@ Script:
                             st.session_state[
                                 "subtitles"
                             ] = subtitles
+
 
                         with st.spinner(
                             "🎙️ Generating Myanmar voice..."
@@ -1011,13 +1334,17 @@ Script:
                                 )
 
                             except Exception as e:
+
                                 st.error(
                                     f"❌ TTS Error: {e}"
                                 )
 
-                    voice_path = st.session_state.get(
-                        "voice_path",
-                        ""
+
+                    voice_path = (
+                        st.session_state.get(
+                            "voice_path",
+                            ""
+                        )
                     )
 
                     voice_duration = (
@@ -1027,8 +1354,11 @@ Script:
                         )
                     )
 
-                    if voice_path and os.path.exists(
+                    if (
                         voice_path
+                        and os.path.exists(
+                            voice_path
+                        )
                     ):
 
                         st.audio(
@@ -1040,13 +1370,16 @@ Script:
                             f"{voice_duration:.2f} seconds"
                         )
 
-                    # =====================================
-                    # SUBTITLES
-                    # =====================================
 
-                    subtitles = st.session_state.get(
-                        "subtitles",
-                        []
+                    # =================================================
+                    # SUBTITLE
+                    # =================================================
+
+                    subtitles = (
+                        st.session_state.get(
+                            "subtitles",
+                            []
+                        )
                     )
 
                     if subtitles:
@@ -1063,27 +1396,18 @@ Script:
                         )
 
                         st.caption(
-                            "Subtitle timing source: Actual TTS audio duration"
+                            "Subtitle timing source: "
+                            "Actual TTS audio duration"
                         )
 
                         st.caption(
                             "CPU optimized TTS pipeline completed."
                         )
 
-                        for item in subtitles:
 
-                            st.write(
-                                f"{item['start']:.2f}s → "
-                                f"{item['end']:.2f}s"
-                            )
-
-                            st.write(
-                                item["text"]
-                            )
-
-                        # =================================
-                        # SRT / ASS
-                        # =================================
+                        # =================================================
+                        # CREATE SUBTITLE FILES
+                        # =================================================
 
                         srt_path = os.path.join(
                             temp_dir,
@@ -1100,6 +1424,7 @@ Script:
                             "w",
                             encoding="utf-8"
                         ) as f:
+
                             f.write(
                                 create_srt(
                                     subtitles
@@ -1111,15 +1436,17 @@ Script:
                             "w",
                             encoding="utf-8"
                         ) as f:
+
                             f.write(
                                 create_ass(
                                     subtitles
                                 )
                             )
 
-                        # =================================
+
+                        # =================================================
                         # SCENE TIMING
-                        # =================================
+                        # =================================================
 
                         st.divider()
 
@@ -1132,9 +1459,10 @@ Script:
                             f"{len(subtitles)} subtitles"
                         )
 
-                        # =================================
+
+                        # =================================================
                         # FREEZE + ZOOM
-                        # =================================
+                        # =================================================
 
                         st.divider()
 
@@ -1162,9 +1490,10 @@ Script:
                             0.5
                         )
 
-                        # =================================
+
+                        # =================================================
                         # BLUR
-                        # =================================
+                        # =================================================
 
                         st.divider()
 
@@ -1173,22 +1502,35 @@ Script:
                         )
 
                         if "blur_x" not in st.session_state:
-                            st.session_state["blur_x"] = 20
+                            st.session_state[
+                                "blur_x"
+                            ] = 20
 
                         if "blur_y" not in st.session_state:
-                            st.session_state["blur_y"] = 860
+                            st.session_state[
+                                "blur_y"
+                            ] = 860
 
                         if "blur_width" not in st.session_state:
-                            st.session_state["blur_width"] = 536
+                            st.session_state[
+                                "blur_width"
+                            ] = 536
 
                         if "blur_height" not in st.session_state:
-                            st.session_state["blur_height"] = 100
+                            st.session_state[
+                                "blur_height"
+                            ] = 100
 
                         if "blur_strength" not in st.session_state:
-                            st.session_state["blur_strength"] = 15
+                            st.session_state[
+                                "blur_strength"
+                            ] = 15
 
                         if "blur_canvas_reset" not in st.session_state:
-                            st.session_state["blur_canvas_reset"] = 0
+                            st.session_state[
+                                "blur_canvas_reset"
+                            ] = 0
+
 
                         blur_enabled = st.checkbox(
                             "🟦 Blur Mode ON / OFF",
@@ -1196,14 +1538,8 @@ Script:
                             key="blur_enabled"
                         )
 
-                        if blur_enabled:
 
-                            st.info(
-                                "📱 Preview box ကို "
-                                "ရွှေ့/ချဲ့/ချုံ့ရန် "
-                                "box ကိုရွေးပြီး "
-                                "edit mode ကိုအသုံးပြုပါ။"
-                            )
+                        if blur_enabled:
 
                             preview_time = st.slider(
                                 "Preview Time",
@@ -1227,6 +1563,7 @@ Script:
                                     1024
                                 )
                             )
+
 
                             if preview_frame:
 
@@ -1256,26 +1593,50 @@ Script:
                                     )
                                 )
 
+
+                                st.info(
+                                    "📱 Red box ကို "
+                                    "ရွှေ့/ချဲ့/ချုံ့နိုင်ပါတယ်။"
+                                )
+
+
                                 canvas_result = st_canvas(
                                     fill_color=(
                                         "rgba("
                                         "255,0,0,0.25)"
                                     ),
+
                                     stroke_width=4,
+
                                     stroke_color="#FF0000",
-                                    background_image=preview_frame,
+
+                                    background_image=(
+                                        preview_frame
+                                    ),
+
                                     update_streamlit=True,
+
                                     height=1024,
+
                                     width=576,
+
                                     drawing_mode="rect",
-                                    initial_drawing=initial_drawing,
+
+                                    initial_drawing=(
+                                        initial_drawing
+                                    ),
+
                                     disabled=False,
+
                                     max_display_height=650,
+
                                     key=canvas_key
                                 )
 
+
                                 if (
-                                    canvas_result is not None
+                                    canvas_result
+                                    is not None
                                     and canvas_result.json_data
                                 ):
 
@@ -1291,7 +1652,9 @@ Script:
                                     rects = [
                                         obj
                                         for obj in objects
-                                        if obj.get("type")
+                                        if obj.get(
+                                            "type"
+                                        )
                                         in [
                                             "rect",
                                             "Rect"
@@ -1383,6 +1746,7 @@ Script:
                                             "blur_height"
                                         ] = h
 
+
                                 if st.button(
                                     "🔄 Reset Blur Box",
                                     use_container_width=True
@@ -1409,6 +1773,7 @@ Script:
                                     ] += 1
 
                                     st.rerun()
+
 
                                 blur_strength = st.slider(
                                     "Blur Strength",
@@ -1437,9 +1802,10 @@ Script:
                                     f"{st.session_state['blur_height']}"
                                 )
 
-                        # =================================
+
+                        # =================================================
                         # VOICEOVER TIMING
-                        # =================================
+                        # =================================================
 
                         st.divider()
 
@@ -1452,15 +1818,17 @@ Script:
                             f"{voice_duration:.2f} seconds"
                         )
 
-                        # =================================
-                        # FINAL EXPORT
-                        # =================================
+
+                        # =================================================
+                        # FINAL VIDEO EXPORT
+                        # =================================================
 
                         st.divider()
 
                         st.subheader(
                             "🎬 Final Video Export"
                         )
+
 
                         if st.button(
                             "🎬 Export Final Video",
@@ -1474,178 +1842,138 @@ Script:
 
                             try:
 
-                                # ---------------------------------
-                                # VIDEO BASE
-                                # ---------------------------------
+                                # =====================================
+                                # 1. NORMALIZE VIDEO
+                                # =====================================
 
-                                base_video = os.path.join(
+                                st.info(
+                                    "🎬 Preparing video..."
+                                )
+
+                                normalized_video = os.path.join(
                                     temp_dir,
-                                    "base_video.mp4"
+                                    "normalized_video.mp4"
+                                )
+
+                                normalize_cmd = [
+                                    "ffmpeg",
+                                    "-y",
+                                    "-i",
+                                    input_path,
+                                    "-vf",
+                                    (
+                                        "scale=576:1024:"
+                                        "force_original_aspect_ratio=decrease,"
+                                        "pad=576:1024:"
+                                        "(ow-iw)/2:"
+                                        "(oh-ih)/2,"
+                                        "setsar=1,"
+                                        "fps=30"
+                                    ),
+                                    "-an",
+                                    "-c:v",
+                                    "libx264",
+                                    "-preset",
+                                    "ultrafast",
+                                    "-crf",
+                                    "27",
+                                    normalized_video
+                                ]
+
+                                result = subprocess.run(
+                                    normalize_cmd,
+                                    capture_output=True,
+                                    text=True
+                                )
+
+                                if result.returncode != 0:
+
+                                    raise RuntimeError(
+                                        "Video preparation failed:\n"
+                                        + result.stderr[-4000:]
+                                    )
+
+
+                                # =====================================
+                                # 2. ZOOM
+                                # =====================================
+
+                                base_video = (
+                                    normalized_video
                                 )
 
                                 if enable_effects:
 
-                                    filter_parts = []
-
-                                    segment_duration = (
-                                        float(freeze_interval)
+                                    st.info(
+                                        "🔍 Applying Zoom..."
                                     )
 
-                                    freeze_dur = (
-                                        float(freeze_duration)
+                                    zoom_video = os.path.join(
+                                        temp_dir,
+                                        "zoom_video.mp4"
                                     )
 
-                                    total = float(duration)
-
-                                    current = 0.0
-                                    index = 0
-
-                                    while current < total:
-
-                                        normal_end = min(
-                                            current
-                                            + segment_duration,
-                                            total
-                                        )
-
-                                        filter_parts.append(
-                                            f"[0:v]"
-                                            f"trim="
-                                            f"start={current}:"
-                                            f"end={normal_end},"
-                                            f"setpts=PTS-STARTPTS,"
-                                            f"scale=576:1024,"
-                                            f"setsar=1"
-                                            f"[seg{index}]"
-                                        )
-
-                                        current = normal_end
-
-                                        if current >= total:
-                                            break
-
-                                        freeze_start = max(
-                                            0,
-                                            current - 0.15
-                                        )
-
-                                        filter_parts.append(
-                                            f"[0:v]"
-                                            f"trim="
-                                            f"start={freeze_start}:"
-                                            f"end={current},"
-                                            f"setpts=PTS-STARTPTS,"
-                                            f"scale=576:1024,"
-                                            f"zoompan="
-                                            f"z='min(zoom+0.002,1.15)':"
-                                            f"x='iw/2-(iw/zoom/2)':"
-                                            f"y='ih/2-(ih/zoom/2)':"
-                                            f"d="
-                                            f"{max(1, int(freeze_dur * 30))}:"
-                                            f"s=576x1024:"
-                                            f"fps=30"
-                                            f"[freeze{index}]"
-                                        )
-
-                                        index += 1
-
-                                    concat_inputs = ""
-
-                                    labels = []
-
-                                    for i in range(index):
-
-                                        labels.append(
-                                            f"[seg{i}]"
-                                        )
-
-                                        if i < index - 1:
-                                            labels.append(
-                                                f"[freeze{i}]"
-                                            )
-
-                                    concat_inputs = "".join(
-                                        labels
+                                    zoom_filter = (
+                                        "zoompan="
+                                        "z='min(zoom+0.0015,1.15)':"
+                                        "x='iw/2-(iw/zoom/2)':"
+                                        "y='ih/2-(ih/zoom/2)':"
+                                        "d=1:"
+                                        "s=576x1024:"
+                                        "fps=30"
                                     )
 
-                                    n_inputs = len(
-                                        labels
-                                    )
-
-                                    filter_complex = (
-                                        ";".join(
-                                            filter_parts
-                                        )
-                                        + ";"
-                                        + concat_inputs
-                                        + f"concat=n={n_inputs}:"
-                                        f"v=1:a=0,"
-                                        f"format=yuv420p"
-                                        f"[basevideo]"
-                                    )
-
-                                    cmd = [
+                                    zoom_cmd = [
                                         "ffmpeg",
                                         "-y",
                                         "-i",
-                                        input_path,
-                                        "-filter_complex",
-                                        filter_complex,
-                                        "-map",
-                                        "[basevideo]",
+                                        normalized_video,
+                                        "-vf",
+                                        zoom_filter,
+                                        "-an",
                                         "-c:v",
                                         "libx264",
                                         "-preset",
                                         "ultrafast",
                                         "-crf",
                                         "27",
-                                        "-an",
-                                        base_video
+                                        zoom_video
                                     ]
 
-                                    process = subprocess.run(
-                                        cmd,
+                                    result = subprocess.run(
+                                        zoom_cmd,
                                         capture_output=True,
                                         text=True
                                     )
 
-                                    if process.returncode != 0:
-                                        raise RuntimeError(
-                                            process.stderr[-3000:]
+                                    if result.returncode == 0:
+
+                                        base_video = (
+                                            zoom_video
                                         )
 
-                                else:
+                                    else:
 
-                                    subprocess.run(
-                                        [
-                                            "ffmpeg",
-                                            "-y",
-                                            "-i",
-                                            input_path,
-                                            "-vf",
-                                            "scale=576:1024,"
-                                            "setsar=1",
-                                            "-c:v",
-                                            "libx264",
-                                            "-preset",
-                                            "ultrafast",
-                                            "-crf",
-                                            "27",
-                                            "-an",
-                                            base_video
-                                        ],
-                                        check=True,
-                                        stdout=subprocess.DEVNULL,
-                                        stderr=subprocess.DEVNULL
-                                    )
+                                        st.warning(
+                                            "⚠️ Zoom failed. "
+                                            "Using normal video."
+                                        )
 
-                                # ---------------------------------
-                                # BLUR
-                                # ---------------------------------
 
-                                video_for_subtitle = base_video
+                                # =====================================
+                                # 3. BLUR
+                                # =====================================
+
+                                video_after_blur = (
+                                    base_video
+                                )
 
                                 if blur_enabled:
+
+                                    st.info(
+                                        "🟦 Applying original "
+                                        "subtitle blur..."
+                                    )
 
                                     blurred_video = os.path.join(
                                         temp_dir,
@@ -1653,33 +1981,38 @@ Script:
                                     )
 
                                     bx = int(
-                                        st.session_state[
-                                            "blur_x"
-                                        ]
+                                        st.session_state.get(
+                                            "blur_x",
+                                            20
+                                        )
                                     )
 
                                     by = int(
-                                        st.session_state[
-                                            "blur_y"
-                                        ]
+                                        st.session_state.get(
+                                            "blur_y",
+                                            860
+                                        )
                                     )
 
                                     bw = int(
-                                        st.session_state[
-                                            "blur_width"
-                                        ]
+                                        st.session_state.get(
+                                            "blur_width",
+                                            536
+                                        )
                                     )
 
                                     bh = int(
-                                        st.session_state[
-                                            "blur_height"
-                                        ]
+                                        st.session_state.get(
+                                            "blur_height",
+                                            100
+                                        )
                                     )
 
                                     br = int(
-                                        st.session_state[
-                                            "blur_strength"
-                                        ]
+                                        st.session_state.get(
+                                            "blur_strength",
+                                            15
+                                        )
                                     )
 
                                     bx = max(
@@ -1718,98 +2051,130 @@ Script:
                                         "[0:v]"
                                         "split=2"
                                         "[main][blur];"
+
                                         "[blur]"
                                         f"crop={bw}:{bh}:{bx}:{by},"
                                         f"boxblur="
                                         f"luma_radius={br}:"
                                         f"luma_power=2"
                                         "[blurregion];"
+
                                         "[main]"
                                         "[blurregion]"
-                                        f"overlay={bx}:{by}:"
-                                        "shortest=1"
-                                        "[vout]"
+                                        f"overlay={bx}:{by}"
+                                        "[outv]"
                                     )
 
-                                    subprocess.run(
-                                        [
-                                            "ffmpeg",
-                                            "-y",
-                                            "-i",
-                                            base_video,
-                                            "-filter_complex",
-                                            blur_filter,
-                                            "-map",
-                                            "[vout]",
-                                            "-c:v",
-                                            "libx264",
-                                            "-preset",
-                                            "ultrafast",
-                                            "-crf",
-                                            "27",
-                                            "-an",
-                                            blurred_video
-                                        ],
-                                        check=True,
-                                        stdout=subprocess.DEVNULL,
-                                        stderr=subprocess.DEVNULL
-                                    )
-
-                                    video_for_subtitle = (
-                                        blurred_video
-                                    )
-
-                                # ---------------------------------
-                                # SUBTITLE
-                                # ---------------------------------
-
-                                subtitled_video = os.path.join(
-                                    temp_dir,
-                                    "subtitled_video.mp4"
-                                )
-
-                                subprocess.run(
-                                    [
+                                    blur_cmd = [
                                         "ffmpeg",
                                         "-y",
                                         "-i",
-                                        video_for_subtitle,
-                                        "-vf",
-                                        f"ass={ass_path}",
+                                        base_video,
+                                        "-filter_complex",
+                                        blur_filter,
+                                        "-map",
+                                        "[outv]",
+                                        "-an",
                                         "-c:v",
                                         "libx264",
                                         "-preset",
                                         "ultrafast",
                                         "-crf",
                                         "27",
-                                        "-an",
-                                        subtitled_video
-                                    ],
-                                    check=True,
-                                    stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL
+                                        blurred_video
+                                    ]
+
+                                    result = subprocess.run(
+                                        blur_cmd,
+                                        capture_output=True,
+                                        text=True
+                                    )
+
+                                    if result.returncode != 0:
+
+                                        raise RuntimeError(
+                                            "Blur failed:\n"
+                                            + result.stderr[-4000:]
+                                        )
+
+                                    video_after_blur = (
+                                        blurred_video
+                                    )
+
+
+                                # =====================================
+                                # 4. MYANMAR SUBTITLE
+                                # =====================================
+
+                                st.info(
+                                    "🇲🇲 Adding Myanmar subtitles..."
                                 )
 
-                                # ---------------------------------
-                                # AUDIO + FINAL
-                                # ---------------------------------
+                                subtitled_video = os.path.join(
+                                    temp_dir,
+                                    "subtitled_video.mp4"
+                                )
+
+                                subtitle_cmd = [
+                                    "ffmpeg",
+                                    "-y",
+                                    "-i",
+                                    video_after_blur,
+                                    "-vf",
+                                    f"ass={ass_path}",
+                                    "-an",
+                                    "-c:v",
+                                    "libx264",
+                                    "-preset",
+                                    "ultrafast",
+                                    "-crf",
+                                    "27",
+                                    subtitled_video
+                                ]
+
+                                result = subprocess.run(
+                                    subtitle_cmd,
+                                    capture_output=True,
+                                    text=True
+                                )
+
+                                if result.returncode != 0:
+
+                                    raise RuntimeError(
+                                        "Subtitle failed:\n"
+                                        + result.stderr[-4000:]
+                                    )
+
+
+                                # =====================================
+                                # 5. DURATION
+                                # =====================================
+
+                                video_duration = (
+                                    get_media_duration(
+                                        subtitled_video
+                                    )
+                                )
 
                                 voice_final_duration = (
-                                    get_audio_duration(
+                                    get_media_duration(
                                         voice_path
                                     )
                                 )
 
-                                video_duration = (
-                                    get_audio_duration(
-                                        subtitled_video
-                                    )
-                                )
+
+                                # =====================================
+                                # 6. EXTEND VIDEO
+                                # =====================================
 
                                 if (
                                     voice_final_duration
                                     > video_duration
                                 ):
+
+                                    st.info(
+                                        "⏱️ Extending video..."
+                                    )
 
                                     extended_video = os.path.join(
                                         temp_dir,
@@ -1821,62 +2186,120 @@ Script:
                                         - video_duration
                                     )
 
-                                    subprocess.run(
-                                        [
-                                            "ffmpeg",
-                                            "-y",
-                                            "-i",
-                                            subtitled_video,
-                                            "-vf",
-                                            f"tpad="
-                                            f"stop_mode=clone:"
-                                            f"stop_duration={extra:.3f}",
-                                            "-c:v",
-                                            "libx264",
-                                            "-preset",
-                                            "ultrafast",
-                                            "-crf",
-                                            "27",
-                                            "-an",
-                                            extended_video
-                                        ],
-                                        check=True,
-                                        stdout=subprocess.DEVNULL,
-                                        stderr=subprocess.DEVNULL
+                                    extend_cmd = [
+                                        "ffmpeg",
+                                        "-y",
+                                        "-i",
+                                        subtitled_video,
+                                        "-vf",
+                                        (
+                                            "tpad="
+                                            "stop_mode=clone:"
+                                            f"stop_duration={extra:.3f}"
+                                        ),
+                                        "-an",
+                                        "-c:v",
+                                        "libx264",
+                                        "-preset",
+                                        "ultrafast",
+                                        "-crf",
+                                        "27",
+                                        extended_video
+                                    ]
+
+                                    result = subprocess.run(
+                                        extend_cmd,
+                                        capture_output=True,
+                                        text=True
                                     )
+
+                                    if result.returncode != 0:
+
+                                        raise RuntimeError(
+                                            "Video extension failed:\n"
+                                            + result.stderr[-4000:]
+                                        )
 
                                     subtitled_video = (
                                         extended_video
                                     )
 
-                                subprocess.run(
-                                    [
-                                        "ffmpeg",
-                                        "-y",
-                                        "-i",
-                                        subtitled_video,
-                                        "-i",
-                                        voice_path,
-                                        "-map",
-                                        "0:v:0",
-                                        "-map",
-                                        "1:a:0",
-                                        "-c:v",
-                                        "copy",
-                                        "-c:a",
-                                        "aac",
-                                        "-b:a",
-                                        "128k",
-                                        "-shortest",
+
+                                # =====================================
+                                # 7. ADD VOICE
+                                # =====================================
+
+                                st.info(
+                                    "🎙️ Adding Myanmar voiceover..."
+                                )
+
+                                final_cmd = [
+                                    "ffmpeg",
+                                    "-y",
+                                    "-i",
+                                    subtitled_video,
+                                    "-i",
+                                    voice_path,
+
+                                    "-map",
+                                    "0:v:0",
+                                    "-map",
+                                    "1:a:0",
+
+                                    "-c:v",
+                                    "copy",
+
+                                    "-c:a",
+                                    "aac",
+
+                                    "-b:a",
+                                    "128k",
+
+                                    "-shortest",
+
+                                    final_path
+                                ]
+
+                                result = subprocess.run(
+                                    final_cmd,
+                                    capture_output=True,
+                                    text=True
+                                )
+
+                                if result.returncode != 0:
+
+                                    raise RuntimeError(
+                                        "Final video creation failed:\n"
+                                        + result.stderr[-5000:]
+                                    )
+
+
+                                # =====================================
+                                # 8. SUCCESS
+                                # =====================================
+
+                                if not os.path.exists(
+                                    final_path
+                                ):
+
+                                    raise RuntimeError(
+                                        "Final MP4 file was not created."
+                                    )
+
+                                file_size = (
+                                    os.path.getsize(
                                         final_path
-                                    ],
-                                    check=True,
-                                    stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL
+                                    )
+                                    / (1024 * 1024)
                                 )
 
                                 st.success(
                                     "🎉 Final video export completed!"
+                                )
+
+                                st.info(
+                                    f"📦 Final video: "
+                                    f"{file_size:.2f} MB"
                                 )
 
                                 st.video(
@@ -1898,10 +2321,15 @@ Script:
                                         use_container_width=True
                                     )
 
+
                             except Exception as e:
 
                                 st.error(
-                                    f"❌ Export Error: {e}"
+                                    "❌ Export Error"
+                                )
+
+                                st.code(
+                                    str(e)
                                 )
 
     else:
