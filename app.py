@@ -174,10 +174,11 @@ def split_myanmar_text(
 
 def wrap_myanmar(
     text,
-    max_chars=24
+    max_chars=30
 ):
     """
-    Wrap Myanmar subtitle into maximum 3 lines.
+    Wrap Myanmar subtitle into maximum 2 lines.
+    Short text stays on one line.
     """
 
     words = str(text).split()
@@ -217,9 +218,11 @@ def wrap_myanmar(
             current
         )
 
-    if len(lines) > 3:
+    # Maximum 2 lines
+    if len(lines) > 2:
 
-        lines = lines[:3]
+        # Keep the first two lines
+        lines = lines[:2]
 
     return "\\N".join(
         lines
@@ -447,9 +450,17 @@ with settings_col2:
         "⏱️ Freeze Every",
         min_value=5.0,
         max_value=60.0,
-        value=10.0,
+        value=8.0,
         step=1.0,
         key="main_freeze_interval"
+    )
+
+    zoom_level = st.selectbox(
+        "🔍 Zoom Level",
+        [1.1, 1.2, 1.3, 1.4, 1.5],
+        index=1,
+        format_func=lambda x: f"{x:.1f}×",
+        key="main_zoom_level"
     )
 
     freeze_duration = st.number_input(
@@ -461,6 +472,12 @@ with settings_col2:
         key="main_freeze_duration"
     )
 
+
+st.caption(
+    f"⚙️ Freeze Every {freeze_interval:.0f}s • "
+    f"Zoom {zoom_level:.1f}× • "
+    f"Freeze {freeze_duration:.1f}s"
+)
 
 st.caption(
     "⚙️ Set your preferred settings first, "
@@ -1077,37 +1094,42 @@ if "myanmar_recap" in st.session_state:
                 )
 
             # =============================================
-            # Create MP3 concat list
+            # 0.4 SECOND GAP
             # =============================================
 
-            concat_file = os.path.join(
+            silence_duration = 0.4
+
+            silence_file = os.path.join(
                 work_dir,
-                "concat_mp3.txt"
+                "silence_0_4s.wav"
             )
 
-            with open(
-                concat_file,
-                "w",
-                encoding="utf-8"
-            ) as f:
+            silence_result = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "anullsrc="
+                    "channel_layout=stereo:"
+                    "sample_rate=44100",
+                    "-t",
+                    str(silence_duration),
+                    silence_file
+                ],
+                capture_output=True,
+                text=True
+            )
 
-                for raw_file in raw_files:
+            if silence_result.returncode != 0:
 
-                    safe_path = (
-                        os.path.abspath(
-                            raw_file
-                        ).replace(
-                            "'",
-                            "'\\''"
-                        )
-                    )
-
-                    f.write(
-                        f"file '{safe_path}'\n"
-                    )
+                raise RuntimeError(
+                    silence_result.stderr[-3000:]
+                )
 
             # =============================================
-            # Combine MP3 segments
+            # Combine TTS + 0.4s silence
             # =============================================
 
             combined_mp3 = os.path.join(
@@ -1115,18 +1137,93 @@ if "myanmar_recap" in st.session_state:
                 "combined.mp3"
             )
 
+            all_inputs = []
+
+            filter_parts = []
+
+            concat_labels = []
+
+            input_index = 0
+
+            for index, raw_file in enumerate(
+                raw_files
+            ):
+
+                all_inputs.extend([
+                    "-i",
+                    raw_file
+                ])
+
+                filter_parts.append(
+                    f"[{input_index}:a]"
+                    f"aresample=44100,"
+                    f"aformat="
+                    f"sample_fmts=fltp:"
+                    f"sample_rates=44100:"
+                    f"channel_layouts=stereo"
+                    f"[a{index}]"
+                )
+
+                concat_labels.append(
+                    f"[a{index}]"
+                )
+
+                input_index += 1
+
+                if index < len(raw_files) - 1:
+
+                    all_inputs.extend([
+                        "-i",
+                        silence_file
+                    ])
+
+                    filter_parts.append(
+                        f"[{input_index}:a]"
+                        f"aresample=44100,"
+                        f"aformat="
+                        f"sample_fmts=fltp:"
+                        f"sample_rates=44100:"
+                        f"channel_layouts=stereo"
+                        f"[s{index}]"
+                    )
+
+                    concat_labels.append(
+                        f"[s{index}]"
+                    )
+
+                    input_index += 1
+
+            concat_filter = (
+                "".join(
+                    concat_labels
+                )
+                + f"concat=n={len(concat_labels)}:"
+                  "v=0:a=1,"
+                  "aresample=44100"
+                  "[outa]"
+            )
+
+            filter_complex_audio = (
+                ";".join(
+                    filter_parts
+                )
+                + ";"
+                + concat_filter
+            )
+
             concat_result = subprocess.run(
                 [
                     "ffmpeg",
                     "-y",
-                    "-f",
-                    "concat",
-                    "-safe",
-                    "0",
-                    "-i",
-                    concat_file,
-                    "-c",
-                    "copy",
+                    *all_inputs,
+                    "-filter_complex",
+                    filter_complex_audio,
+                    "-map",
+                    "[outa]",
+                    "-c:a",
+                    "libmp3lame",
+                    "-b:a",
+                    "128k",
                     combined_mp3
                 ],
                 capture_output=True,
@@ -1169,8 +1266,16 @@ if "myanmar_recap" in st.session_state:
 
             raw_cursor = 0.0
 
+            # Include the 0.4 sec gaps
             predicted_duration = (
                 cumulative_raw_time
+                + (
+                    silence_duration
+                    * max(
+                        0,
+                        len(chunks) - 1
+                    )
+                )
             )
 
             if predicted_duration > 0:
@@ -1237,7 +1342,12 @@ if "myanmar_recap" in st.session_state:
                         "text": chunk
                     })
 
+                # Add 0.4 sec gap
                 raw_cursor = raw_end
+
+                if index < len(chunks) - 1:
+
+                    raw_cursor += silence_duration
 
             # =============================================
             # Save session state
@@ -1306,6 +1416,10 @@ if "myanmar_recap" in st.session_state:
             st.info(
                 "🔊 Subtitle timing source: "
                 "Actual TTS audio duration"
+            )
+
+            st.info(
+                "⏸️ Voice segment gap: 0.4 seconds"
             )
 
             st.info(
@@ -1618,6 +1732,11 @@ if freeze_enabled:
         f"{freeze_duration:.1f} seconds"
     )
 
+    st.write(
+        f"🔍 Zoom Level: "
+        f"{zoom_level:.1f}×"
+    )
+
     st.caption(
         "Every selected interval → "
         "Freeze + Zoom In → Zoom Out"
@@ -1733,7 +1852,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Myanmar,Noto Sans Myanmar,28,&H00FFFFFF,&H00FFFFFF,&H00000000,&H99000000,0,0,0,0,100,100,0,0,1,2,1,2,40,40,55,1
+Style: Myanmar,Noto Sans Myanmar,56,&H0000FFFF,&H0000FFFF,&H00000000,&H99000000,0,0,0,0,100,100,0,0,1,3,1,2,40,40,55,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -1755,7 +1874,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 text = wrap_myanmar(
                     item["text"],
-                    24
+                    30
                 )
 
                 text = text.replace(
@@ -1857,6 +1976,29 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             end - 0.10
                         )
 
+                        zoom_amount = float(
+                            zoom_level
+                        )
+
+                        zoom_frames = max(
+                            1,
+                            int(
+                                round(
+                                    freeze_duration
+                                    * 30
+                                )
+                            )
+                        )
+
+                        half_frames = max(
+                            1,
+                            int(
+                                round(
+                                    zoom_frames / 2
+                                )
+                            )
+                        )
+
                         freeze_filter = (
                             f"[0:v]"
                             f"trim=start={frame_time}:"
@@ -1866,10 +2008,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             f"scale=576:1024,"
                             f"setsar=1,"
                             f"zoompan="
-                            f"z='if(lte(on,29),"
-                            f"1+0.15*on/29,"
-                            f"1.15-0.15*(on-29)/29)':"
-                            f"d=60:"
+                            f"z='if(lte(on,{half_frames - 1}),"
+                            f"1+({zoom_amount}-1)*on/"
+                            f"{half_frames - 1},"
+                            f"{zoom_amount}-"
+                            f"({zoom_amount}-1)*(on-"
+                            f"{half_frames - 1})/"
+                            f"{half_frames - 1})':"
+                            f"d={zoom_frames}:"
                             f"x='iw/2-(iw/zoom/2)':"
                             f"y='ih/2-(ih/zoom/2)':"
                             f"s=576x1024:"
