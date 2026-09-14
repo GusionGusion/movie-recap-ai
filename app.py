@@ -33,6 +33,12 @@ def get_audio_duration(media_file):
     """Read exact media duration using ffprobe."""
 
     try:
+        if not os.path.exists(media_file):
+            return 0.0
+
+        if os.path.getsize(media_file) <= 0:
+            return 0.0
+
         result = subprocess.run(
             [
                 "ffprobe",
@@ -54,7 +60,12 @@ def get_audio_duration(media_file):
         if not value:
             return 0.0
 
-        return float(value)
+        duration = float(value)
+
+        if duration <= 0:
+            return 0.0
+
+        return duration
 
     except Exception:
         return 0.0
@@ -1336,8 +1347,8 @@ if "myanmar_recap" in st.session_state:
             # Split narration
             # =================================================
 
-            # Changed only for smoother voiceover:
-            # 65 -> 100 characters per TTS segment.
+            # Keep 100 characters per TTS segment
+            # for smoother voiceover.
             chunks = split_myanmar_text(
                 text,
                 max_chars=100
@@ -1407,6 +1418,33 @@ if "myanmar_recap" in st.session_state:
                         raw_file
                     )
 
+                    # -------------------------------------------------
+                    # VALIDATE RAW TTS FILE
+                    # -------------------------------------------------
+
+                    if (
+                        not os.path.exists(raw_file)
+                        or
+                        os.path.getsize(raw_file) < 1000
+                    ):
+
+                        raise RuntimeError(
+                            f"TTS segment {index + 1} "
+                            f"was not created correctly."
+                        )
+
+                    raw_duration = get_audio_duration(
+                        raw_file
+                    )
+
+                    if raw_duration <= 0:
+
+                        raise RuntimeError(
+                            f"TTS segment {index + 1} "
+                            f"has 0 duration. "
+                            f"File may be invalid."
+                        )
+
                     results.append(
                         raw_file
                     )
@@ -1431,6 +1469,13 @@ if "myanmar_recap" in st.session_state:
                     raw_file
                 )
 
+                if duration <= 0:
+
+                    raise RuntimeError(
+                        f"Raw TTS segment "
+                        f"{index + 1} has invalid duration."
+                    )
+
                 raw_durations.append(
                     duration
                 )
@@ -1445,16 +1490,26 @@ if "myanmar_recap" in st.session_state:
             # NATURAL CROSSFADE
             # =================================================
 
-            # Reduced from 0.12 to 0.08 seconds
-            # to reduce audible overlap/choppiness.
-
             TTS_CROSSFADE = 0.08
 
 
             normalized_files = []
 
 
-            # Normalize every TTS segment first.
+            # =================================================
+            # NORMALIZE EVERY TTS SEGMENT
+            # =================================================
+            #
+            # IMPORTANT:
+            # Do NOT use silenceremove here.
+            #
+            # silenceremove can remove too much audio from
+            # short Myanmar TTS segments and create a
+            # zero/invalid audio file.
+            #
+            # Only normalize the audio format.
+            # =================================================
+
             for index, raw_file in enumerate(
                 raw_files
             ):
@@ -1472,18 +1527,17 @@ if "myanmar_recap" in st.session_state:
                         raw_file,
                         "-af",
                         (
-                            "silenceremove="
-                            "start_periods=1:"
-                            "start_duration=0.03:"
-                            "start_threshold=-55dB:"
-                            "stop_periods=1:"
-                            "stop_duration=0.08:"
-                            "stop_threshold=-55dB,"
                             "aformat="
                             "sample_fmts=fltp:"
                             "sample_rates=48000:"
                             "channel_layouts=stereo"
                         ),
+                        "-ar",
+                        "48000",
+                        "-ac",
+                        "2",
+                        "-c:a",
+                        "pcm_s16le",
                         normalized_file
                     ],
                     capture_output=True,
@@ -1493,8 +1547,46 @@ if "myanmar_recap" in st.session_state:
                 if normalize_result.returncode != 0:
 
                     raise RuntimeError(
-                        normalize_result.stderr[-3000:]
+                        "TTS normalization failed "
+                        f"for segment {index + 1}:\n"
+                        f"{normalize_result.stderr[-3000:]}"
                     )
+
+
+                # -------------------------------------------------
+                # VALIDATE NORMALIZED WAV
+                # -------------------------------------------------
+
+                if (
+                    not os.path.exists(
+                        normalized_file
+                    )
+                    or
+                    os.path.getsize(
+                        normalized_file
+                    ) < 1000
+                ):
+
+                    raise RuntimeError(
+                        f"Normalized TTS segment "
+                        f"{index + 1} is empty or invalid."
+                    )
+
+
+                normalized_duration = (
+                    get_audio_duration(
+                        normalized_file
+                    )
+                )
+
+
+                if normalized_duration <= 0:
+
+                    raise RuntimeError(
+                        f"Normalized TTS segment "
+                        f"{index + 1} has 0 duration."
+                    )
+
 
                 normalized_files.append(
                     normalized_file
@@ -1505,17 +1597,26 @@ if "myanmar_recap" in st.session_state:
             # MEASURE NORMALIZED DURATIONS
             # =================================================
             #
-            # Use the duration AFTER removing unnecessary
-            # silence so subtitle timing follows the actual
-            # audio that will be crossfaded.
+            # Use duration AFTER normalization so subtitle
+            # timing follows the actual audio.
+            # =================================================
 
             raw_durations = []
 
-            for normalized_file in normalized_files:
+            for index, normalized_file in enumerate(
+                normalized_files
+            ):
 
                 duration = get_audio_duration(
                     normalized_file
                 )
+
+                if duration <= 0:
+
+                    raise RuntimeError(
+                        f"Normalized segment "
+                        f"{index + 1} has invalid duration."
+                    )
 
                 raw_durations.append(
                     duration
@@ -1624,8 +1725,40 @@ if "myanmar_recap" in st.session_state:
                 if combine_result.returncode != 0:
 
                     raise RuntimeError(
-                        combine_result.stderr[-3000:]
+                        "TTS audio combining failed:\n"
+                        f"{combine_result.stderr[-3000:]}"
                     )
+
+
+            # =================================================
+            # VALIDATE COMBINED WAV
+            # =================================================
+
+            if (
+                not os.path.exists(
+                    combined_audio
+                )
+                or
+                os.path.getsize(
+                    combined_audio
+                ) < 1000
+            ):
+
+                raise RuntimeError(
+                    "Combined TTS WAV is empty or invalid."
+                )
+
+
+            combined_duration = get_audio_duration(
+                combined_audio
+            )
+
+
+            if combined_duration <= 0:
+
+                raise RuntimeError(
+                    "Combined TTS WAV has 0 duration."
+                )
 
 
             # =================================================
@@ -1658,7 +1791,28 @@ if "myanmar_recap" in st.session_state:
             if convert_result.returncode != 0:
 
                 raise RuntimeError(
-                    convert_result.stderr[-3000:]
+                    "Final MP3 conversion failed:\n"
+                    f"{convert_result.stderr[-3000:]}"
+                )
+
+
+            # =================================================
+            # VALIDATE FINAL MP3
+            # =================================================
+
+            if (
+                not os.path.exists(
+                    final_voice_file
+                )
+                or
+                os.path.getsize(
+                    final_voice_file
+                ) < 1000
+            ):
+
+                raise RuntimeError(
+                    "Final Myanmar voiceover MP3 "
+                    "was not created correctly."
                 )
 
 
@@ -1669,6 +1823,15 @@ if "myanmar_recap" in st.session_state:
             voice_duration = get_audio_duration(
                 final_voice_file
             )
+
+
+            if voice_duration <= 0:
+
+                raise RuntimeError(
+                    "Final Myanmar voiceover has "
+                    "0.00 seconds duration. "
+                    "The MP3 file is invalid."
+                )
 
 
             # =================================================
@@ -2217,6 +2380,26 @@ if (
 
 
             # =================================================
+            # VALIDATE VOICE FILE BEFORE EXPORT
+            # =================================================
+
+            if (
+                not os.path.exists(
+                    voice_file
+                )
+                or
+                os.path.getsize(
+                    voice_file
+                ) < 1000
+            ):
+
+                raise RuntimeError(
+                    "Myanmar voiceover file is "
+                    "missing or invalid."
+                )
+
+
+            # =================================================
             # VIDEO DURATION
             # =================================================
 
@@ -2232,6 +2415,14 @@ if (
             voice_duration = get_audio_duration(
                 voice_file
             )
+
+
+            if voice_duration <= 0:
+
+                raise RuntimeError(
+                    "Voiceover duration is 0.00 seconds. "
+                    "Please generate the Myanmar voiceover again."
+                )
 
 
             st.session_state[
