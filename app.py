@@ -170,54 +170,142 @@ def split_myanmar_text(
     return chunks
 
 
+# =========================================================
+# MYANMAR SUBTITLE WRAP
+# =========================================================
+
 def wrap_myanmar(
     text,
-    max_chars=24
+    max_chars=20
 ):
-    """Wrap Myanmar subtitle into maximum 3 lines."""
+    """
+    Myanmar subtitle:
+    - 1 line when text is short
+    - Maximum 2 lines
+    - Never intentionally removes text
+    - Tries to balance two lines naturally
+    """
 
-    words = str(text).split()
+    text = str(text).strip()
 
-    if not words:
+    if not text:
         return ""
 
-    lines = []
+    text = re.sub(
+        r"\s+",
+        " ",
+        text
+    )
 
-    current = ""
+    # Short text stays on one line.
+    if len(text) <= max_chars:
+        return text
 
-    for word in words:
+    words = text.split()
 
-        test = (
-            word
-            if not current
-            else current + " " + word
-        )
+    # If the text contains spaces, balance it into two lines.
+    if len(words) > 1:
 
-        if len(test) <= max_chars:
+        best_split = None
+        best_score = None
 
-            current = test
+        for i in range(
+            1,
+            len(words)
+        ):
 
-        else:
+            line1 = " ".join(
+                words[:i]
+            )
 
-            if current:
+            line2 = " ".join(
+                words[i:]
+            )
 
-                lines.append(
-                    current
+            # Avoid creating an extremely long line
+            # when another split is possible.
+            longest = max(
+                len(line1),
+                len(line2)
+            )
+
+            difference = abs(
+                len(line1)
+                - len(line2)
+            )
+
+            # Prefer balanced lines.
+            score = (
+                longest * 2
+                + difference
+            )
+
+            if best_score is None or score < best_score:
+
+                best_score = score
+                best_split = (
+                    line1,
+                    line2
                 )
 
-            current = word
+        if best_split:
 
-    if current:
+            return (
+                best_split[0]
+                + "\\N"
+                + best_split[1]
+            )
 
-        lines.append(
-            current
+    # -----------------------------------------------------
+    # Long text without useful spaces.
+    # Split into two character-based lines.
+    # -----------------------------------------------------
+
+    midpoint = math.ceil(
+        len(text) / 2
+    )
+
+    # Try to split near the middle without
+    # creating a very unbalanced result.
+    split_position = midpoint
+
+    punctuation_positions = [
+        text.rfind(
+            "၊",
+            0,
+            midpoint + 5
+        ),
+        text.rfind(
+            " ",
+            0,
+            midpoint + 5
+        )
+    ]
+
+    valid_positions = [
+        p
+        for p in punctuation_positions
+        if p > 0
+    ]
+
+    if valid_positions:
+
+        split_position = max(
+            valid_positions
         )
 
-    if len(lines) > 3:
+    line1 = text[:split_position].strip()
+    line2 = text[split_position:].strip()
 
-        lines = lines[:3]
+    if line1 and line2:
 
-    return "\\N".join(lines)
+        return (
+            line1
+            + "\\N"
+            + line2
+        )
+
+    return text
 
 
 # =========================================================
@@ -712,12 +800,6 @@ if "transcript_result" in st.session_state:
 
                     scene_items = []
 
-                    # One actual video frame for each
-                    # timestamped Whisper segment.
-                    #
-                    # Limit to 24 frames to keep Gemini request
-                    # reasonable. If there are more segments,
-                    # sample them chronologically.
                     usable_segments = [
                         seg
                         for seg in segments
@@ -877,9 +959,7 @@ Rules:
   keep it only in Dialogue and do not describe it as a visual event.
 - Keep the output short and natural.
 - The purpose is to make the later recap match the actual video.
-
 """
-
 
                         contents = []
 
@@ -1363,11 +1443,8 @@ if "myanmar_recap" in st.session_state:
             # NATURAL CROSSFADE
             # =================================================
 
-            # IMPORTANT:
             # No hard 0.4 second silence.
-            #
-            # TTS chunks overlap slightly so the natural
-            # end/start silence is blended instead of doubled.
+            # TTS chunks overlap slightly.
 
             TTS_CROSSFADE = 0.12
 
@@ -1587,15 +1664,12 @@ if "myanmar_recap" in st.session_state:
                 )
 
 
-                # Crossfade removes part of the gap
-                # between segments.
                 end_time = (
                     start_time
                     + raw_duration
                 )
 
 
-                # Last chunk keeps its full duration.
                 if index < len(chunks) - 1:
 
                     next_time = (
@@ -2168,15 +2242,27 @@ if (
             # ASS SUBTITLES
             # =================================================
 
+            # =================================================
+            # SUBTITLE STYLE
+            #
+            # Font size:
+            # 28 -> 56 (2x)
+            #
+            # Yellow text
+            # Black outline
+            # Bold
+            # Maximum 2 lines
+            # =================================================
+
             ass_content = """[Script Info]
 ScriptType: v4.00+
 PlayResX: 576
 PlayResY: 1024
 ScaledBorderAndShadow: yes
 
-[V4+ Styles]
+[V4+Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Myanmar,Noto Sans Myanmar,28,&H00FFFFFF,&H00FFFFFF,&H00000000,&H99000000,0,0,0,0,100,100,0,0,1,2,1,2,40,40,55,1
+Style: Myanmar,Noto Sans Myanmar,56,&H0000FFFF,&H0000FFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,3,0,2,35,35,65,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -2201,9 +2287,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     )
                 )
 
+                # Maximum 2 lines.
+                # Short text = 1 line.
+                # Long text = balanced 2 lines.
                 text = wrap_myanmar(
                     item["text"],
-                    24
+                    20
                 )
 
                 text = text.replace(
