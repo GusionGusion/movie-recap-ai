@@ -58,6 +58,11 @@ DEFAULT_STATE = {
     "tts_rate": None,
 
     "final_video_duration": 0.0,
+
+    # Chunk processing
+    "total_parts": 1,
+    "current_part": 0,
+    "part_files": [],
 }
 
 
@@ -825,6 +830,119 @@ def load_whisper_model(
 
 
 # =========================================================
+# VIDEO SPLIT
+# =========================================================
+
+def split_video_into_parts(
+    video_path,
+    video_duration,
+    work_root
+):
+
+    """
+    Split video into exact 60-second parts.
+
+    <= 60 sec:
+        one part
+
+    > 60 sec:
+        60 sec chunks
+    """
+
+    os.makedirs(
+        work_root,
+        exist_ok=True
+    )
+
+    if video_duration <= 60.0:
+
+        return [
+            video_path
+        ]
+
+    total_parts = int(
+        math.ceil(
+            video_duration / 60.0
+        )
+    )
+
+    part_files = []
+
+    for index in range(total_parts):
+
+        start_time = index * 60.0
+
+        duration = min(
+            60.0,
+            video_duration - start_time
+        )
+
+        part_file = os.path.join(
+            work_root,
+            f"part_{index + 1:03d}.mp4"
+        )
+
+        command = [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            f"{start_time:.3f}",
+            "-i",
+            video_path,
+            "-t",
+            f"{duration:.3f}",
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a?",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "23",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-avoid_negative_ts",
+            "make_zero",
+            part_file
+        ]
+
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+
+            raise RuntimeError(
+                f"❌ Could not create Part {index + 1}:\n"
+                f"{result.stderr[-4000:]}"
+            )
+
+        if (
+            not os.path.exists(part_file)
+            or
+            os.path.getsize(part_file) < 1000
+        ):
+
+            raise RuntimeError(
+                f"❌ Part {index + 1} was not created."
+            )
+
+        part_files.append(
+            part_file
+        )
+
+    return part_files
+
+
+# =========================================================
 # PROCESSING UI
 # =========================================================
 
@@ -1016,7 +1134,7 @@ def show_complete_screen():
     )
 
     st.markdown(
-        """
+        f"""
         <div class="complete-card">
 
         <b>✅ Video uploaded</b><br><br>
@@ -1078,10 +1196,14 @@ def show_complete_screen():
 
 
 # =========================================================
-# MAIN PROCESSING PIPELINE
+# PROCESS ONE VIDEO PART
 # =========================================================
 
-def process_movie_recap(
+def process_one_part(
+    chunk_path,
+    part_index,
+    total_parts,
+    work_root,
     percent_text,
     progress_bar,
     current_step,
@@ -1116,18 +1238,75 @@ def process_movie_recap(
         "main_freeze_duration"
     ]
 
-    video_path = st.session_state[
-        "video_path"
-    ]
 
-    if not video_path:
+    part_duration = get_audio_duration(
+        chunk_path
+    )
+
+    if part_duration <= 0:
+
         raise RuntimeError(
-            "Video path is missing."
+            f"Part {part_index} has invalid duration."
         )
 
-    if not os.path.exists(video_path):
-        raise RuntimeError(
-            "Uploaded video file could not be found."
+
+    # =====================================================
+    # PART PROGRESS RANGE
+    # =====================================================
+
+    part_start_percent = (
+        (part_index - 1)
+        /
+        total_parts
+        *
+        90
+    )
+
+    part_end_percent = (
+        part_index
+        /
+        total_parts
+        *
+        90
+    )
+
+
+    def part_progress(
+        local_percent,
+        message
+    ):
+
+        local_percent = max(
+            0,
+            min(
+                100,
+                local_percent
+            )
+        )
+
+        overall = (
+            part_start_percent
+            +
+            (
+                local_percent
+                /
+                100
+            )
+            *
+            (
+                part_end_percent
+                -
+                part_start_percent
+            )
+        )
+
+        update_processing_ui(
+            int(overall),
+            f"Part {part_index}/{total_parts} — {message}",
+            percent_text,
+            progress_bar,
+            current_step,
+            checklist
         )
 
 
@@ -1135,22 +1314,14 @@ def process_movie_recap(
     # 1. TRANSCRIPT
     # =====================================================
 
-    update_processing_ui(
+    part_progress(
         5,
-        "🎥 Preparing uploaded video...",
-        percent_text,
-        progress_bar,
-        current_step,
-        checklist
+        "🎥 Preparing video..."
     )
 
-    update_processing_ui(
+    part_progress(
         15,
-        f"📝 Transcribing with Whisper {whisper_model}...",
-        percent_text,
-        progress_bar,
-        current_step,
-        checklist
+        f"📝 Transcribing with Whisper {whisper_model}..."
     )
 
     model = load_whisper_model(
@@ -1158,30 +1329,29 @@ def process_movie_recap(
     )
 
     result = model.transcribe(
-        video_path,
+        chunk_path,
         language="en"
     )
 
-    st.session_state[
-        "transcript_result"
-    ] = result
+    transcript = result.get(
+        "text",
+        ""
+    )
 
-    st.session_state[
-        "transcript"
-    ] = result["text"]
+    if not transcript.strip():
+
+        raise RuntimeError(
+            f"Part {part_index}: Whisper returned empty transcript."
+        )
 
 
     # =====================================================
     # 2. SCENE ANALYSIS
     # =====================================================
 
-    update_processing_ui(
+    part_progress(
         25,
-        "🎬 Analyzing actual video scenes...",
-        percent_text,
-        progress_bar,
-        current_step,
-        checklist
+        "🎬 Analyzing actual video scenes..."
     )
 
     segments = result.get(
@@ -1192,8 +1362,9 @@ def process_movie_recap(
     if not segments:
 
         raise RuntimeError(
-            "No timestamped transcript segments found."
+            f"Part {part_index}: No timestamped transcript segments found."
         )
+
 
     api_key = st.secrets[
         "GEMINI_API_KEY"
@@ -1203,15 +1374,17 @@ def process_movie_recap(
         api_key=api_key
     )
 
+
     cap = cv2.VideoCapture(
-        video_path
+        chunk_path
     )
 
     if not cap.isOpened():
 
         raise RuntimeError(
-            "Could not open video for scene analysis."
+            f"Part {part_index}: Could not open video."
         )
+
 
     scene_items = []
 
@@ -1226,7 +1399,9 @@ def process_movie_recap(
         ).strip()
     ]
 
+
     max_frames = 24
+
 
     if len(usable_segments) > max_frames:
 
@@ -1235,7 +1410,8 @@ def process_movie_recap(
         for n in range(max_frames):
 
             pos = (
-                n *
+                n
+                *
                 (
                     len(usable_segments) - 1
                 )
@@ -1285,9 +1461,13 @@ def process_movie_recap(
         if not text:
             continue
 
+
         timestamp = (
-            start + end
+            start
+            +
+            end
         ) / 2
+
 
         frame_bytes = extract_frame_bytes(
             cap,
@@ -1296,6 +1476,7 @@ def process_movie_recap(
 
         if frame_bytes is None:
             continue
+
 
         scene_items.append(
             {
@@ -1307,12 +1488,14 @@ def process_movie_recap(
             }
         )
 
+
     cap.release()
+
 
     if not scene_items:
 
         raise RuntimeError(
-            "No video frames could be extracted."
+            f"Part {part_index}: No video frames could be extracted."
         )
 
 
@@ -1362,6 +1545,7 @@ Rules:
 - The purpose is to make the later recap match the actual video.
 """
 
+
     contents = []
 
     contents.append(
@@ -1369,6 +1553,7 @@ Rules:
             text=prompt
         )
     )
+
 
     for index, item in enumerate(
         scene_items,
@@ -1385,11 +1570,13 @@ Rules:
             f"{item['text']}\n"
         )
 
+
         contents.append(
             types.Part.from_text(
                 text=label
             )
         )
+
 
         contents.append(
             types.Part.from_bytes(
@@ -1398,10 +1585,12 @@ Rules:
             )
         )
 
+
     response = client.models.generate_content(
         model="gemini-3.6-flash",
         contents=contents
     )
+
 
     scene_analysis = (
         response.text
@@ -1409,37 +1598,23 @@ Rules:
         else ""
     )
 
+
     if not scene_analysis:
 
         raise RuntimeError(
-            "Gemini returned no scene analysis."
+            f"Part {part_index}: Gemini returned no scene analysis."
         )
-
-    st.session_state[
-        "ai_scene_analysis"
-    ] = scene_analysis
-
-    st.session_state[
-        "scene_analysis_frames"
-    ] = len(scene_items)
 
 
     # =====================================================
     # 3. RECAP SCRIPT
     # =====================================================
 
-    update_processing_ui(
+    part_progress(
         40,
-        "📝 Writing movie recap script...",
-        percent_text,
-        progress_bar,
-        current_step,
-        checklist
+        "📝 Writing movie recap script..."
     )
 
-    scene_analysis = st.session_state[
-        "ai_scene_analysis"
-    ]
 
     recap_prompt = f"""
 You are a professional movie recap script writer.
@@ -1474,10 +1649,12 @@ Scene Analysis:
 {scene_analysis}
 """
 
+
     response = client.models.generate_content(
         model="gemini-3.6-flash",
         contents=recap_prompt
     )
+
 
     recap_script = (
         response.text
@@ -1485,29 +1662,23 @@ Scene Analysis:
         else ""
     )
 
+
     if not recap_script:
 
         raise RuntimeError(
-            "Gemini returned no recap script."
+            f"Part {part_index}: Gemini returned no recap script."
         )
-
-    st.session_state[
-        "recap_script"
-    ] = recap_script
 
 
     # =====================================================
     # 4. MYANMAR TRANSLATION
     # =====================================================
 
-    update_processing_ui(
+    part_progress(
         55,
-        "🇲🇲 Translating recap into Myanmar...",
-        percent_text,
-        progress_bar,
-        current_step,
-        checklist
+        "🇲🇲 Translating recap into Myanmar..."
     )
+
 
     myanmar_prompt = f"""
 Translate the following movie recap narration
@@ -1529,10 +1700,12 @@ English Recap:
 {recap_script}
 """
 
+
     response = client.models.generate_content(
         model="gemini-3.6-flash",
-        contents=myanmar_prompt
+        contents=mymanmar_prompt
     )
+
 
     myanmar_text = (
         response.text
@@ -1540,42 +1713,34 @@ English Recap:
         else ""
     )
 
+
     if not myanmar_text:
 
         raise RuntimeError(
-            "Gemini returned no Myanmar narration."
+            f"Part {part_index}: Gemini returned no Myanmar narration."
         )
-
-    st.session_state[
-        "myanmar_recap"
-    ] = myanmar_text
 
 
     # =====================================================
     # 5. MYANMAR VOICEOVER
     # =====================================================
 
-    update_processing_ui(
+    part_progress(
         65,
-        "🎙️ Generating Myanmar voiceover...",
-        percent_text,
-        progress_bar,
-        current_step,
-        checklist
+        "🎙️ Generating Myanmar voiceover..."
     )
+
 
     import edge_tts
 
-    text = (
-        st.session_state[
-            "myanmar_recap"
-        ]
-    ).strip()
+
+    text = myanmar_text.strip()
+
 
     if not text:
 
         raise RuntimeError(
-            "Myanmar recap is empty."
+            f"Part {part_index}: Myanmar recap is empty."
         )
 
 
@@ -1610,19 +1775,24 @@ English Recap:
         max_chars=100
     )
 
+
     if not chunks:
 
         raise RuntimeError(
-            "Could not split Myanmar narration."
+            f"Part {part_index}: Could not split Myanmar narration."
         )
 
 
-    work_dir = tempfile.mkdtemp(
-        prefix="movie_recap_voice_"
+    voice_work_dir = os.path.join(
+        work_root,
+        f"voice_part_{part_index:03d}"
     )
 
-    raw_files = []
-    raw_durations = []
+
+    os.makedirs(
+        voice_work_dir,
+        exist_ok=True
+    )
 
 
     async def create_all_tts():
@@ -1632,9 +1802,10 @@ English Recap:
         for index, chunk in enumerate(chunks):
 
             raw_file = os.path.join(
-                work_dir,
+                voice_work_dir,
                 f"raw_{index:04d}.mp3"
             )
+
 
             communicate = edge_tts.Communicate(
                 text=chunk,
@@ -1644,9 +1815,11 @@ English Recap:
                 pitch="+0Hz"
             )
 
+
             await communicate.save(
                 raw_file
             )
+
 
             if (
                 not os.path.exists(raw_file)
@@ -1655,22 +1828,15 @@ English Recap:
             ):
 
                 raise RuntimeError(
-                    f"TTS segment {index + 1} "
-                    f"was not created correctly."
+                    f"Part {part_index}: "
+                    f"TTS segment {index + 1} failed."
                 )
 
-            raw_duration = get_audio_duration(
+
+            results.append(
                 raw_file
             )
 
-            if raw_duration <= 0:
-
-                raise RuntimeError(
-                    f"TTS segment {index + 1} "
-                    f"has 0 duration."
-                )
-
-            results.append(raw_file)
 
         return results
 
@@ -1680,42 +1846,31 @@ English Recap:
     )
 
 
+    raw_durations = []
+
+
     for index, raw_file in enumerate(raw_files):
 
         duration = get_audio_duration(
             raw_file
         )
 
+
         if duration <= 0:
 
             raise RuntimeError(
-                f"Raw TTS segment {index + 1} "
-                f"has invalid duration."
+                f"Part {part_index}: "
+                f"TTS segment {index + 1} has 0 duration."
             )
+
 
         raw_durations.append(
             duration
         )
 
-        progress_percent = 66 + int(
-            (
-                (index + 1)
-                / len(raw_files)
-            ) * 5
-        )
-
-        update_processing_ui(
-            progress_percent,
-            f"🎙️ Creating voice segment "
-            f"{index + 1}/{len(raw_files)}...",
-            percent_text,
-            progress_bar,
-            current_step,
-            checklist
-        )
-
 
     TTS_CROSSFADE = 0.08
+
 
     normalized_files = []
 
@@ -1723,9 +1878,10 @@ English Recap:
     for index, raw_file in enumerate(raw_files):
 
         normalized_file = os.path.join(
-            work_dir,
+            voice_work_dir,
             f"normalized_{index:04d}.wav"
         )
+
 
         normalize_result = subprocess.run(
             [
@@ -1752,6 +1908,7 @@ English Recap:
             text=True
         )
 
+
         if normalize_result.returncode != 0:
 
             raise RuntimeError(
@@ -1759,56 +1916,14 @@ English Recap:
                 f"{normalize_result.stderr[-3000:]}"
             )
 
-        if (
-            not os.path.exists(normalized_file)
-            or
-            os.path.getsize(normalized_file) < 1000
-        ):
-
-            raise RuntimeError(
-                f"Normalized TTS segment "
-                f"{index + 1} is invalid."
-            )
-
-        normalized_duration = (
-            get_audio_duration(
-                normalized_file
-            )
-        )
-
-        if normalized_duration <= 0:
-
-            raise RuntimeError(
-                f"Normalized TTS segment "
-                f"{index + 1} has 0 duration."
-            )
 
         normalized_files.append(
             normalized_file
         )
 
 
-    raw_durations = []
-
-    for normalized_file in normalized_files:
-
-        duration = get_audio_duration(
-            normalized_file
-        )
-
-        if duration <= 0:
-
-            raise RuntimeError(
-                "Normalized segment has invalid duration."
-            )
-
-        raw_durations.append(
-            duration
-        )
-
-
     combined_audio = os.path.join(
-        work_dir,
+        voice_work_dir,
         "combined.wav"
     )
 
@@ -1833,9 +1948,11 @@ English Recap:
                 ]
             )
 
+
         filter_parts = []
 
         previous_label = "[0:a]"
+
 
         for i in range(
             1,
@@ -1843,6 +1960,7 @@ English Recap:
         ):
 
             output_label = f"[a{i}]"
+
 
             filter_parts.append(
                 (
@@ -1856,6 +1974,7 @@ English Recap:
                 )
             )
 
+
             previous_label = output_label
 
 
@@ -1863,14 +1982,17 @@ English Recap:
             filter_parts
         )
 
+
         combine_command = [
             "ffmpeg",
             "-y"
         ]
 
+
         combine_command.extend(
             ffmpeg_inputs
         )
+
 
         combine_command.extend(
             [
@@ -1884,11 +2006,13 @@ English Recap:
             ]
         )
 
+
         combine_result = subprocess.run(
             combine_command,
             capture_output=True,
             text=True
         )
+
 
         if combine_result.returncode != 0:
 
@@ -1898,30 +2022,20 @@ English Recap:
             )
 
 
-    if (
-        not os.path.exists(combined_audio)
-        or
-        os.path.getsize(combined_audio) < 1000
-    ):
-
-        raise RuntimeError(
-            "Combined TTS WAV is invalid."
-        )
-
-
     combined_duration = get_audio_duration(
         combined_audio
     )
 
+
     if combined_duration <= 0:
 
         raise RuntimeError(
-            "Combined TTS WAV has 0 duration."
+            f"Part {part_index}: Combined TTS has 0 duration."
         )
 
 
     final_voice_file = os.path.join(
-        work_dir,
+        voice_work_dir,
         "myanmar_voiceover.mp3"
     )
 
@@ -1951,37 +2065,26 @@ English Recap:
         )
 
 
-    if (
-        not os.path.exists(final_voice_file)
-        or
-        os.path.getsize(final_voice_file) < 1000
-    ):
-
-        raise RuntimeError(
-            "Final Myanmar voiceover MP3 "
-            "was not created correctly."
-        )
-
-
     voice_duration = get_audio_duration(
         final_voice_file
     )
 
+
     if voice_duration <= 0:
 
         raise RuntimeError(
-            "Final Myanmar voiceover has "
-            "0.00 seconds duration."
+            f"Part {part_index}: Final voiceover has 0 duration."
         )
 
 
     # =====================================================
-    # SUBTITLE TIMING FROM TTS
+    # SUBTITLE TIMING
     # =====================================================
 
     subtitle_data = []
 
     current_time = 0.0
+
 
     for index, chunk in enumerate(chunks):
 
@@ -1991,24 +2094,29 @@ English Recap:
 
         end_time = (
             start_time
-            + raw_duration
+            +
+            raw_duration
         )
+
 
         if index < len(chunks) - 1:
 
             next_time = (
                 end_time
-                - TTS_CROSSFADE
+                -
+                TTS_CROSSFADE
             )
 
         else:
 
             next_time = end_time
 
+
         next_time = min(
             next_time,
             voice_duration
         )
+
 
         if next_time <= start_time:
 
@@ -2016,6 +2124,7 @@ English Recap:
                 voice_duration,
                 start_time + 0.05
             )
+
 
         if start_time < voice_duration:
 
@@ -2027,10 +2136,13 @@ English Recap:
                 }
             )
 
+
         current_time = (
             end_time
-            - TTS_CROSSFADE
+            -
+            TTS_CROSSFADE
         )
+
 
         current_time = max(
             current_time,
@@ -2038,54 +2150,18 @@ English Recap:
         )
 
 
-    st.session_state[
-        "voiceover_file"
-    ] = final_voice_file
-
-    st.session_state[
-        "voice_duration"
-    ] = voice_duration
-
-    st.session_state[
-        "subtitle_data"
-    ] = subtitle_data
-
-    st.session_state[
-        "subtitle_timing_source"
-    ] = "tts_segments_crossfade"
-
-    st.session_state[
-        "voice_chunks"
-    ] = chunks
-
-    st.session_state[
-        "voice_speed_value"
-    ] = float(voice_speed)
-
-    st.session_state[
-        "selected_voice"
-    ] = selected_voice
-
-    st.session_state[
-        "tts_rate"
-    ] = tts_rate
-
-
     # =====================================================
-    # 6. SUBTITLE PREPARATION
+    # FIX SUBTITLES
     # =====================================================
 
-    update_processing_ui(
+    part_progress(
         85,
-        "💬 Synchronizing Myanmar subtitles...",
-        percent_text,
-        progress_bar,
-        current_step,
-        checklist
+        "💬 Synchronizing Myanmar subtitles..."
     )
 
 
     fixed_subtitles = []
+
 
     for item in subtitle_data:
 
@@ -2094,29 +2170,34 @@ English Recap:
             float(item["start"])
         )
 
+
         end = float(
             item["end"]
         )
+
 
         text = str(
             item["text"]
         ).strip()
 
+
         if not text:
             continue
 
-        if voice_duration > 0:
 
-            if start >= voice_duration:
-                continue
+        if start >= voice_duration:
+            continue
 
-            end = min(
-                end,
-                voice_duration
-            )
+
+        end = min(
+            end,
+            voice_duration
+        )
+
 
         if end <= start:
             continue
+
 
         fixed_subtitles.append(
             {
@@ -2125,95 +2206,6 @@ English Recap:
                 "text": text
             }
         )
-
-
-    st.session_state[
-        "subtitle_data"
-    ] = fixed_subtitles
-
-
-    # =====================================================
-    # 7. FINAL VIDEO PREPARATION
-    # =====================================================
-
-    update_processing_ui(
-        90,
-        "🎬 Preparing final video export...",
-        percent_text,
-        progress_bar,
-        current_step,
-        checklist
-    )
-
-
-    original_video = os.path.join(
-        tempfile.gettempdir(),
-        "movie_recap_original.mp4"
-    )
-
-    with open(
-        original_video,
-        "wb"
-    ) as f:
-
-        f.write(
-            st.session_state[
-                "uploaded_file"
-            ]
-        )
-
-
-    voice_file = st.session_state[
-        "voiceover_file"
-    ]
-
-    if (
-        not os.path.exists(voice_file)
-        or
-        os.path.getsize(voice_file) < 1000
-    ):
-
-        raise RuntimeError(
-            "Myanmar voiceover file is missing."
-        )
-
-
-    video_duration = get_audio_duration(
-        original_video
-    )
-
-    voice_duration = get_audio_duration(
-        voice_file
-    )
-
-    if voice_duration <= 0:
-
-        raise RuntimeError(
-            "Voiceover duration is 0.00 seconds."
-        )
-
-    st.session_state[
-        "voice_duration"
-    ] = voice_duration
-
-
-    if freeze_enabled:
-
-        interval = float(
-            freeze_interval
-        )
-
-        freeze_time = float(
-            freeze_duration
-        )
-
-    else:
-
-        interval = (
-            video_duration + 1
-        )
-
-        freeze_time = 0
 
 
     # =====================================================
@@ -2235,34 +2227,37 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
 
-    for item in st.session_state[
-        "subtitle_data"
-    ]:
+    for item in fixed_subtitles:
 
         new_start = max(
             0,
             float(item["start"])
         )
 
+
         new_end = max(
             new_start + 0.1,
             float(item["end"])
         )
+
 
         text = wrap_myanmar(
             item["text"],
             16
         )
 
+
         text = text.replace(
             "{",
             "\\{"
         )
 
+
         text = text.replace(
             "}",
             "\\}"
         )
+
 
         ass_content += (
             f"Dialogue: 0,"
@@ -2274,9 +2269,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
     ass_file = os.path.join(
-        tempfile.gettempdir(),
-        "myanmar_subtitles.ass"
+        work_root,
+        f"subtitle_part_{part_index:03d}.ass"
     )
+
 
     with open(
         ass_file,
@@ -2290,30 +2286,32 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
     # =====================================================
-    # 8. FREEZE FRAME + ZOOM
+    # FREEZE + ZOOM
     # =====================================================
+
+    part_progress(
+        94,
+        "🧊 Applying Freeze Frame + Zoom..."
+    )
+
 
     if freeze_enabled:
 
-        update_processing_ui(
-            94,
-            "🧊 Applying Freeze Frame + Zoom...",
-            percent_text,
-            progress_bar,
-            current_step,
-            checklist
+        interval = float(
+            freeze_interval
+        )
+
+        freeze_time = float(
+            freeze_duration
         )
 
     else:
 
-        update_processing_ui(
-            94,
-            "🎬 Preparing video...",
-            percent_text,
-            progress_bar,
-            current_step,
-            checklist
+        interval = (
+            part_duration + 1
         )
+
+        freeze_time = 0
 
 
     filter_parts = []
@@ -2325,27 +2323,36 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
         segment_count = int(
             math.ceil(
-                video_duration
-                / interval
+                part_duration
+                /
+                interval
             )
         )
+
 
         for i in range(
             segment_count
         ):
 
             start = (
-                i * interval
+                i
+                *
+                interval
             )
 
+
             end = min(
-                (i + 1) * interval,
-                video_duration
+                (i + 1)
+                *
+                interval,
+                part_duration
             )
+
 
             normal_label = (
                 f"normal{i}"
             )
+
 
             normal_filter = (
                 f"[0:v]"
@@ -2358,25 +2365,29 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 f"[{normal_label}]"
             )
 
+
             filter_parts.append(
                 normal_filter
             )
+
 
             labels.append(
                 f"[{normal_label}]"
             )
 
 
-            if end < video_duration:
+            if end < part_duration:
 
                 freeze_label = (
                     f"freeze{i}"
                 )
 
+
                 frame_time = max(
                     start,
                     end - 0.10
                 )
+
 
                 freeze_filter = (
                     f"[0:v]"
@@ -2399,9 +2410,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     f"[{freeze_label}]"
                 )
 
+
                 filter_parts.append(
                     freeze_filter
                 )
+
 
                 labels.append(
                     f"[{freeze_label}]"
@@ -2411,6 +2424,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         concat_inputs = "".join(
             labels
         )
+
 
         concat_filter = (
             f"{concat_inputs}"
@@ -2422,6 +2436,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             f"format=yuv420p"
             f"[basevideo]"
         )
+
 
         filter_parts.append(
             concat_filter
@@ -2440,7 +2455,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
     # =====================================================
-    # 9. ASS SUBTITLE BURN
+    # ASS SUBTITLE BURN
     # =====================================================
 
     filter_parts.append(
@@ -2463,11 +2478,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
     base_video_duration = (
-        video_duration
+        part_duration
         +
         (
             actual_freeze_count
-            * freeze_time
+            *
+            freeze_time
         )
     )
 
@@ -2475,7 +2491,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     extra_duration = max(
         0.0,
         voice_duration
-        - base_video_duration
+        -
+        base_video_duration
     )
 
 
@@ -2491,6 +2508,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             f"setpts=PTS-STARTPTS"
             "[vout2]"
         )
+
 
         final_video_label = (
             "[vout2]"
@@ -2509,22 +2527,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
     # =====================================================
-    # 10. FINAL FFMPEG EXPORT
+    # EXPORT THIS PART
     # =====================================================
 
-    update_processing_ui(
+    part_progress(
         97,
-        "🎬 Exporting final Movie Recap video...",
-        percent_text,
-        progress_bar,
-        current_step,
-        checklist
+        "🎬 Exporting this part..."
     )
 
 
     output_video = os.path.join(
-        tempfile.gettempdir(),
-        "final_movie_recap.mp4"
+        work_root,
+        f"exported_part_{part_index:03d}.mp4"
     )
 
 
@@ -2532,9 +2546,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         "ffmpeg",
         "-y",
         "-i",
-        original_video,
+        chunk_path,
         "-i",
-        voice_file,
+        final_voice_file,
         "-filter_complex",
         filter_complex,
         "-map",
@@ -2554,8 +2568,134 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         "-b:a",
         "128k",
         "-t",
-        f"{voice_duration:.3f}",
+        f"{max(voice_duration, base_video_duration):.3f}",
         output_video
+    ]
+
+
+    export_result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True
+    )
+
+
+    if export_result.returncode != 0:
+
+        raise RuntimeError(
+            f"Part {part_index} FFmpeg Export Failed:\n"
+            f"{export_result.stderr[-5000:]}"
+        )
+
+
+    if (
+        not os.path.exists(output_video)
+        or
+        os.path.getsize(output_video) < 1000
+    ):
+
+        raise RuntimeError(
+            f"Part {part_index} final video was not created."
+        )
+
+
+    return output_video
+
+
+# =========================================================
+# COMBINE EXPORTED PARTS
+# =========================================================
+
+def combine_exported_parts(
+    part_files,
+    work_root,
+    percent_text,
+    progress_bar,
+    current_step,
+    checklist
+):
+
+    update_processing_ui(
+        96,
+        "🔗 Combining all exported parts...",
+        percent_text,
+        progress_bar,
+        current_step,
+        checklist
+    )
+
+
+    if not part_files:
+
+        raise RuntimeError(
+            "No exported parts were found."
+        )
+
+
+    if len(part_files) == 1:
+
+        final_video = os.path.join(
+            work_root,
+            "final_movie_recap.mp4"
+        )
+
+        shutil.copyfile(
+            part_files[0],
+            final_video
+        )
+
+        return final_video
+
+
+    concat_file = os.path.join(
+        work_root,
+        "concat_parts.txt"
+    )
+
+
+    with open(
+        concat_file,
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        for part in part_files:
+
+            absolute_path = os.path.abspath(
+                part
+            ).replace(
+                "\\",
+                "/"
+            )
+
+            absolute_path = absolute_path.replace(
+                "'",
+                "'\\''"
+            )
+
+            f.write(
+                f"file '{absolute_path}'\n"
+            )
+
+
+    final_video = os.path.join(
+        work_root,
+        "final_movie_recap.mp4"
+    )
+
+
+    command = [
+        "ffmpeg",
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        concat_file,
+        "-c",
+        "copy",
+        final_video
     ]
 
 
@@ -2568,39 +2708,294 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     if result.returncode != 0:
 
-        raise RuntimeError(
-            "FFmpeg Export Failed:\n"
-            f"{result.stderr[-5000:]}"
+        # Fallback: re-encode if stream copy cannot concatenate
+        fallback_command = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            concat_file,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "27",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            final_video
+        ]
+
+
+        fallback_result = subprocess.run(
+            fallback_command,
+            capture_output=True,
+            text=True
         )
+
+
+        if fallback_result.returncode != 0:
+
+            raise RuntimeError(
+                "❌ Could not combine exported parts:\n"
+                f"{fallback_result.stderr[-5000:]}"
+            )
 
 
     if (
-        not os.path.exists(output_video)
+        not os.path.exists(final_video)
         or
-        os.path.getsize(output_video) < 1000
+        os.path.getsize(final_video) < 1000
     ):
 
         raise RuntimeError(
-            "Final video was not created correctly."
+            "Final combined video was not created."
         )
 
 
-    final_duration = get_audio_duration(
-        output_video
+    return final_video
+
+
+# =========================================================
+# MAIN PROCESSING PIPELINE
+# =========================================================
+
+def process_movie_recap(
+    percent_text,
+    progress_bar,
+    current_step,
+    checklist
+):
+
+    video_path = st.session_state[
+        "video_path"
+    ]
+
+
+    if not video_path:
+
+        raise RuntimeError(
+            "Video path is missing."
+        )
+
+
+    if not os.path.exists(video_path):
+
+        raise RuntimeError(
+            "Uploaded video file could not be found."
+        )
+
+
+    # =====================================================
+    # ORIGINAL VIDEO DURATION
+    # =====================================================
+
+    video_duration = get_audio_duration(
+        video_path
     )
 
 
+    if video_duration <= 0:
+
+        raise RuntimeError(
+            "Could not determine video duration."
+        )
+
+
     st.session_state[
-        "final_video"
-    ] = output_video
+        "video_duration"
+    ] = video_duration
+
+
+    # =====================================================
+    # CREATE WORK DIRECTORY
+    # =====================================================
+
+    work_root = tempfile.mkdtemp(
+        prefix="movie_recap_job_"
+    )
+
+
+    # =====================================================
+    # SPLIT VIDEO
+    # =====================================================
+
+    update_processing_ui(
+        3,
+        "🎥 Checking video duration...",
+        percent_text,
+        progress_bar,
+        current_step,
+        checklist
+    )
+
+
+    if video_duration > 60.0:
+
+        total_parts = int(
+            math.ceil(
+                video_duration / 60.0
+            )
+        )
+
+
+        update_processing_ui(
+            5,
+            (
+                f"✂️ Video is {video_duration:.1f}s. "
+                f"Splitting into {total_parts} parts..."
+            ),
+            percent_text,
+            progress_bar,
+            current_step,
+            checklist
+        )
+
+
+        part_files = split_video_into_parts(
+            video_path,
+            video_duration,
+            work_root
+        )
+
+    else:
+
+        total_parts = 1
+
+        part_files = [
+            video_path
+        ]
+
+
+    st.session_state[
+        "total_parts"
+    ] = total_parts
+
+
+    st.session_state[
+        "current_part"
+    ] = 0
+
+
+    # =====================================================
+    # PROCESS EACH PART
+    # =====================================================
+
+    exported_parts = []
+
+
+    for index, part_file in enumerate(
+        part_files,
+        start=1
+    ):
+
+        st.session_state[
+            "current_part"
+        ] = index
+
+
+        update_processing_ui(
+            int(
+                (
+                    (index - 1)
+                    /
+                    total_parts
+                )
+                *
+                90
+            ),
+            (
+                f"🎬 Processing Part "
+                f"{index}/{total_parts}"
+            ),
+            percent_text,
+            progress_bar,
+            current_step,
+            checklist
+        )
+
+
+        exported_part = process_one_part(
+            part_file,
+            index,
+            total_parts,
+            work_root,
+            percent_text,
+            progress_bar,
+            current_step,
+            checklist
+        )
+
+
+        exported_parts.append(
+            exported_part
+        )
+
+
+        st.session_state[
+            "part_files"
+        ] = exported_parts.copy()
+
+
+    # =====================================================
+    # COMBINE ALL PARTS
+    # =====================================================
+
+    update_processing_ui(
+        95,
+        "🔗 All parts exported. Combining...",
+        percent_text,
+        progress_bar,
+        current_step,
+        checklist
+    )
+
+
+    final_video = combine_exported_parts(
+        exported_parts,
+        work_root,
+        percent_text,
+        progress_bar,
+        current_step,
+        checklist
+    )
+
+
+    # =====================================================
+    # FINAL DURATION
+    # =====================================================
+
+    final_duration = get_audio_duration(
+        final_video
+    )
+
+
+    if final_duration <= 0:
+
+        raise RuntimeError(
+            "Final video duration is invalid."
+        )
+
 
     st.session_state[
         "final_video_duration"
     ] = final_duration
 
 
+    st.session_state[
+        "final_video"
+    ] = final_video
+
+
     # =====================================================
-    # 100%
+    # COMPLETE
     # =====================================================
 
     update_processing_ui(
@@ -2612,7 +3007,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         checklist
     )
 
-    return output_video
+
+    return final_video
 
 
 # =========================================================
@@ -2666,26 +3062,37 @@ if st.session_state.processing:
             checklist
         )
 
+
         st.session_state.final_video = (
             output_video
         )
 
+
         st.session_state.processing = False
+
         st.session_state.process_complete = True
+
         st.session_state.process_error = None
+
         st.session_state.process_percent = 100
 
+
         st.rerun()
+
 
     except Exception as e:
 
         st.session_state.processing = False
+
         st.session_state.process_complete = False
+
         st.session_state.process_error = str(e)
+
 
         st.error(
             f"❌ Movie Recap Failed\n\n{e}"
         )
+
 
         st.stop()
 
@@ -2702,6 +3109,11 @@ st.markdown(
         → Recap Script → Myanmar Voiceover
         → Myanmar Subtitle → Freeze + Zoom
         → Final Video</b>
+
+        <br><br>
+
+        ⏱️ <b>Videos longer than 1 minute are
+        automatically split into 60-second parts.</b>
 
     </div>
     """,
@@ -2730,15 +3142,18 @@ if uploaded_file is not None:
 
     video_bytes = uploaded_file.getvalue()
 
+
     file_size_mb = (
         uploaded_file.size
         /
         (1024 * 1024)
     )
 
+
     suffix = os.path.splitext(
         uploaded_file.name
     )[1]
+
 
     with tempfile.NamedTemporaryFile(
         delete=False,
@@ -2756,6 +3171,7 @@ if uploaded_file is not None:
         "uploaded_file"
     ] = video_bytes
 
+
     st.session_state[
         "video_path"
     ] = video_path
@@ -2765,11 +3181,13 @@ if uploaded_file is not None:
         video_path
     )
 
+
     if not cap.isOpened():
 
         st.error(
             "❌ Video file could not be opened."
         )
+
 
     else:
 
@@ -2777,9 +3195,11 @@ if uploaded_file is not None:
             cv2.CAP_PROP_FPS
         )
 
+
         frame_count = cap.get(
             cv2.CAP_PROP_FRAME_COUNT
         )
+
 
         width = int(
             cap.get(
@@ -2787,30 +3207,52 @@ if uploaded_file is not None:
             )
         )
 
+
         height = int(
             cap.get(
                 cv2.CAP_PROP_FRAME_HEIGHT
             )
         )
 
+
         if fps > 0:
 
             duration_seconds = (
-                frame_count / fps
+                frame_count
+                /
+                fps
             )
 
         else:
 
-            duration_seconds = 0
+            duration_seconds = get_audio_duration(
+                video_path
+            )
 
 
         minutes = int(
             duration_seconds // 60
         )
 
+
         seconds = int(
             duration_seconds % 60
         )
+
+
+        # Automatic part information
+
+        if duration_seconds > 60:
+
+            total_parts_preview = int(
+                math.ceil(
+                    duration_seconds / 60
+                )
+            )
+
+        else:
+
+            total_parts_preview = 1
 
 
         st.markdown(
@@ -2838,6 +3280,7 @@ if uploaded_file is not None:
                 f"{file_size_mb:.2f} MB"
             )
 
+
             st.metric(
                 "Resolution",
                 f"{width} × {height}"
@@ -2851,9 +3294,55 @@ if uploaded_file is not None:
                 f"{minutes} min {seconds} sec"
             )
 
+
             st.metric(
                 "FPS",
                 f"{fps:.2f}"
+            )
+
+
+        if duration_seconds > 60:
+
+            st.markdown(
+                f"""
+                <div class="info-box">
+
+                ✂️ <b>Long Video Mode</b><br><br>
+
+                This video is
+                <b>{duration_seconds:.1f} seconds</b> long.
+
+                <br><br>
+
+                Movie Recap AI will automatically create
+                <b>{total_parts_preview} parts</b>.
+
+                <br><br>
+
+                Each part will be processed separately
+                for better Voiceover + Subtitle synchronization.
+
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+
+        else:
+
+            st.markdown(
+                """
+                <div class="success-box">
+
+                ⚡ Video is 1 minute or shorter.
+
+                <br><br>
+
+                Normal single-video processing will be used.
+
+                </div>
+                """,
+                unsafe_allow_html=True
             )
 
 
@@ -2869,9 +3358,11 @@ if uploaded_file is not None:
             "🎥 Video Preview"
         )
 
+
         st.video(
             video_bytes
         )
+
 
         cap.release()
 
@@ -2978,6 +3469,7 @@ if uploaded_file is not None:
         "### 🎬 Ready to Generate"
     )
 
+
     st.markdown(
         """
         <div class="info-box">
@@ -2987,6 +3479,7 @@ if uploaded_file is not None:
 
         <br><br>
 
+        ✂️ Auto Split Long Video<br>
         🎤 Whisper Transcript<br>
         🎬 Gemini Scene Analysis<br>
         📝 Recap Script<br>
@@ -2994,7 +3487,8 @@ if uploaded_file is not None:
         🎙️ Myanmar Voiceover<br>
         💬 Subtitle Timing<br>
         🧊 Freeze Frame + Zoom<br>
-        🎬 Final FFmpeg Export
+        🎬 Part-by-Part Export<br>
+        🔗 Final Part Combining
 
         </div>
         """,
@@ -3009,10 +3503,20 @@ if uploaded_file is not None:
     ):
 
         st.session_state.processing = True
+
         st.session_state.process_complete = False
+
         st.session_state.process_error = None
+
         st.session_state.process_percent = 0
+
         st.session_state.process_step = "Starting..."
+
+        st.session_state.final_video = None
+
+        st.session_state.part_files = []
+
+        st.session_state.current_part = 0
 
         st.rerun()
 
@@ -3037,8 +3541,10 @@ if (
     st.markdown(
         """
         <div class="warning-box">
+
             ⚠️ The previous processing attempt failed.
             Please check the error above and try again.
+
         </div>
         """,
         unsafe_allow_html=True
