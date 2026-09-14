@@ -1336,9 +1336,11 @@ if "myanmar_recap" in st.session_state:
             # Split narration
             # =================================================
 
+            # Changed only for smoother voiceover:
+            # 65 -> 100 characters per TTS segment.
             chunks = split_myanmar_text(
                 text,
-                max_chars=65
+                max_chars=100
             )
 
 
@@ -1443,10 +1445,10 @@ if "myanmar_recap" in st.session_state:
             # NATURAL CROSSFADE
             # =================================================
 
-            # No hard 0.4 second silence.
-            # TTS chunks overlap slightly.
+            # Reduced from 0.12 to 0.08 seconds
+            # to reduce audible overlap/choppiness.
 
-            TTS_CROSSFADE = 0.12
+            TTS_CROSSFADE = 0.08
 
 
             normalized_files = []
@@ -1470,6 +1472,13 @@ if "myanmar_recap" in st.session_state:
                         raw_file,
                         "-af",
                         (
+                            "silenceremove="
+                            "start_periods=1:"
+                            "start_duration=0.03:"
+                            "start_threshold=-55dB:"
+                            "stop_periods=1:"
+                            "stop_duration=0.08:"
+                            "stop_threshold=-55dB,"
                             "aformat="
                             "sample_fmts=fltp:"
                             "sample_rates=48000:"
@@ -1489,6 +1498,27 @@ if "myanmar_recap" in st.session_state:
 
                 normalized_files.append(
                     normalized_file
+                )
+
+
+            # =================================================
+            # MEASURE NORMALIZED DURATIONS
+            # =================================================
+            #
+            # Use the duration AFTER removing unnecessary
+            # silence so subtitle timing follows the actual
+            # audio that will be crossfaded.
+
+            raw_durations = []
+
+            for normalized_file in normalized_files:
+
+                duration = get_audio_duration(
+                    normalized_file
+                )
+
+                raw_durations.append(
+                    duration
                 )
 
 
@@ -2246,7 +2276,7 @@ if (
             # SUBTITLE STYLE
             #
             # Font size:
-            # 28 -> 56 (2x)
+            # 28 -> 68
             #
             # Yellow text
             # Black outline
@@ -2262,7 +2292,7 @@ ScaledBorderAndShadow: yes
 
 [V4+Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Myanmar,Noto Sans Myanmar,56,&H0000FFFF,&H0000FFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,3,0,2,35,35,65,1
+Style: Myanmar,Noto Sans Myanmar,68,&H0000FFFF,&H0000FFFF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,3,0,2,22,22,55,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -2292,7 +2322,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 # Long text = balanced 2 lines.
                 text = wrap_myanmar(
                     item["text"],
-                    20
+                    16
                 )
 
                 text = text.replace(
