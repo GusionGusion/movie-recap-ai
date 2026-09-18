@@ -526,7 +526,8 @@ with settings_col1:
         [
             1.0,
             1.1,
-            1.2
+            1.2,
+            1.3
         ],
         index=0,
         key="main_voice_speed"
@@ -1403,7 +1404,7 @@ if "myanmar_recap" in st.session_state:
             # TTS chunks overlap slightly so the natural
             # end/start silence is blended instead of doubled.
 
-            TTS_CROSSFADE = 0.06
+            TTS_CROSSFADE = 0.04
 
 
             normalized_files = []
