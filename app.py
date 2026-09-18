@@ -172,14 +172,14 @@ def split_myanmar_text(
 
 def wrap_myanmar(
     text,
-    max_chars=24
+    max_chars=28
 ):
     """
-    Wrap Myanmar subtitle.
-
-    Short text  = 1 line
-    Long text   = maximum 2 lines
-    Never more than 2 lines.
+    Myanmar subtitle:
+    - Maximum 2 lines
+    - Short text = 1 line
+    - Long text = 2 lines
+    - Never more than 2 lines
     """
 
     words = str(text).split()
@@ -187,52 +187,96 @@ def wrap_myanmar(
     if not words:
         return ""
 
-    lines = []
+    # -----------------------------------------------------
+    # Short subtitle → one line
+    # -----------------------------------------------------
 
-    current = ""
+    if len(str(text)) <= max_chars:
+
+        return str(text).strip()
+
+
+    # -----------------------------------------------------
+    # Long subtitle → maximum 2 balanced lines
+    # -----------------------------------------------------
+
+    total_length = len(str(text))
+
+    target = max(
+        1,
+        total_length // 2
+    )
+
+    best_split = None
+    best_difference = None
+
+    current_words = []
 
     for word in words:
 
-        test = (
+        current_words.append(
             word
-            if not current
-            else current + " " + word
         )
 
-        if len(test) <= max_chars:
-
-            current = test
-
-        else:
-
-            if current:
-
-                lines.append(
-                    current
-                )
-
-            current = word
-
-    if current:
-
-        lines.append(
-            current
+        left = " ".join(
+            current_words
         )
 
-    # Maximum 2 lines only
-    if len(lines) > 2:
-
-        # Put remaining text into the second line
-        second_line = " ".join(
-            lines[1:]
+        right = " ".join(
+            words[len(current_words):]
         )
 
-        lines = [
-            lines[0],
-            second_line
-        ]
+        if not right:
+            break
 
-    return "\\N".join(lines)
+        difference = abs(
+            len(left) - len(right)
+        )
+
+        if best_difference is None:
+
+            best_difference = difference
+            best_split = len(
+                current_words
+            )
+
+        elif difference < best_difference:
+
+            best_difference = difference
+            best_split = len(
+                current_words
+            )
+
+        # Prefer a split near the middle.
+        if len(left) >= target:
+
+            break
+
+
+    if best_split is None:
+
+        return str(text).strip()
+
+
+    line1 = " ".join(
+        words[:best_split]
+    ).strip()
+
+    line2 = " ".join(
+        words[best_split:]
+    ).strip()
+
+
+    if not line2:
+
+        return line1
+
+
+    return (
+        line1
+        + "\\N"
+        + line2
+    )
 
 
 # =========================================================
@@ -263,7 +307,6 @@ def extract_frame_bytes(
 
             return None
 
-        # Keep aspect ratio.
         max_side = 768
 
         h, w = frame.shape[:2]
@@ -349,7 +392,6 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is not None:
 
-    # Store bytes only once
     video_bytes = uploaded_file.getvalue()
 
     st.session_state[
@@ -361,7 +403,6 @@ if uploaded_file is not None:
         / (1024 * 1024)
     )
 
-    # Create ONE temporary video file
     suffix = os.path.splitext(
         uploaded_file.name
     )[1]
@@ -381,7 +422,6 @@ if uploaded_file is not None:
         "video_path"
     ] = video_path
 
-    # Read video information
     cap = cv2.VideoCapture(
         video_path
     )
@@ -526,8 +566,7 @@ with settings_col1:
         [
             1.0,
             1.1,
-            1.2,
-            1.3
+            1.2
         ],
         index=0,
         key="main_voice_speed"
@@ -562,21 +601,24 @@ with settings_col2:
 
 
 # =========================================================
-# SUBTITLE FONT SIZE - MANUAL
+# SUBTITLE FONT SETTINGS
 # =========================================================
 
+st.subheader(
+    "🔤 Subtitle Font Settings"
+)
+
 subtitle_font_size = st.number_input(
-    "📝 Subtitle Font Size (px)",
+    "📏 Subtitle Font Size (Manual)",
     min_value=20,
     max_value=100,
     value=50,
     step=1,
-    key="main_subtitle_font_size"
+    help="Default subtitle font size is 50px."
 )
 
-
 st.caption(
-    "📝 Subtitle: Short = 1 line • Long = maximum 2 lines"
+    "Default: 50px • Subtitle maximum: 2 lines"
 )
 
 
@@ -729,10 +771,6 @@ if "transcript_result" in st.session_state:
                     ]
                 )
 
-                # -------------------------------------------------
-                # ACTUAL VIDEO FRAME ANALYSIS
-                # -------------------------------------------------
-
                 cap = cv2.VideoCapture(
                     video_path
                 )
@@ -747,12 +785,6 @@ if "transcript_result" in st.session_state:
 
                     scene_items = []
 
-                    # One actual video frame for each
-                    # timestamped Whisper segment.
-                    #
-                    # Limit to 24 frames to keep Gemini request
-                    # reasonable. If there are more segments,
-                    # sample them chronologically.
                     usable_segments = [
                         seg
                         for seg in segments
@@ -868,10 +900,6 @@ if "transcript_result" in st.session_state:
 
                     else:
 
-                        # -------------------------------------------------
-                        # ONE DIRECT GEMINI SCENE ANALYSIS
-                        # -------------------------------------------------
-
                         prompt = """
 You are analyzing an actual movie/video.
 
@@ -912,9 +940,7 @@ Rules:
   keep it only in Dialogue and do not describe it as a visual event.
 - Keep the output short and natural.
 - The purpose is to make the later recap match the actual video.
-
 """
-
 
                         contents = []
 
@@ -998,10 +1024,6 @@ Rules:
                     f"❌ Scene Analysis failed: {e}"
                 )
 
-
-# ---------------------------------------------------------
-# DISPLAY DIRECT SCENE ANALYSIS
-# ---------------------------------------------------------
 
 if "ai_scene_analysis" in st.session_state:
 
@@ -1217,10 +1239,6 @@ st.subheader(
 
 if "myanmar_recap" in st.session_state:
 
-    # =====================================================
-    # SELECT VOICE
-    # =====================================================
-
     if voice_gender.startswith("👩"):
 
         selected_voice = (
@@ -1233,10 +1251,6 @@ if "myanmar_recap" in st.session_state:
             "my-MM-ThihaNeural"
         )
 
-
-    # =====================================================
-    # EDGE-TTS RATE
-    # =====================================================
 
     if float(voice_speed) == 1.0:
 
@@ -1258,10 +1272,6 @@ if "myanmar_recap" in st.session_state:
     )
 
 
-    # =====================================================
-    # GENERATE VOICEOVER
-    # =====================================================
-
     if st.button(
         "🎙️ Generate Myanmar Voiceover"
     ) or run_all:
@@ -1269,7 +1279,6 @@ if "myanmar_recap" in st.session_state:
         try:
 
             import edge_tts
-
 
             text = (
                 st.session_state[
@@ -1286,10 +1295,6 @@ if "myanmar_recap" in st.session_state:
 
                 st.stop()
 
-
-            # =================================================
-            # Split narration
-            # =================================================
 
             chunks = split_myanmar_text(
                 text,
@@ -1311,10 +1316,6 @@ if "myanmar_recap" in st.session_state:
                 f"{len(chunks)} voice segments."
             )
 
-
-            # =================================================
-            # WORKING DIRECTORY
-            # =================================================
 
             work_dir = tempfile.mkdtemp(
                 prefix="movie_recap_voice_"
@@ -1373,7 +1374,7 @@ if "myanmar_recap" in st.session_state:
 
 
             # =================================================
-            # MEASURE DURATIONS
+            # MEASURE ACTUAL DURATIONS
             # =================================================
 
             for index, raw_file in enumerate(
@@ -1398,19 +1399,12 @@ if "myanmar_recap" in st.session_state:
             # NATURAL CROSSFADE
             # =================================================
 
-            # IMPORTANT:
-            # No hard 0.4 second silence.
-            #
-            # TTS chunks overlap slightly so the natural
-            # end/start silence is blended instead of doubled.
-
-            TTS_CROSSFADE = 0.04
+            TTS_CROSSFADE = 0.06
 
 
             normalized_files = []
 
 
-            # Normalize every TTS segment first.
             for index, raw_file in enumerate(
                 raw_files
             ):
@@ -1483,10 +1477,7 @@ if "myanmar_recap" in st.session_state:
 
                 filter_parts = []
 
-
-                previous_label = (
-                    "[0:a]"
-                )
+                previous_label = "[0:a]"
 
 
                 for i in range(
@@ -1616,21 +1607,16 @@ if "myanmar_recap" in st.session_state:
                     raw_durations[index]
                 )
 
-
                 start_time = (
                     current_time
                 )
 
-
-                # Crossfade removes part of the gap
-                # between segments.
                 end_time = (
                     start_time
                     + raw_duration
                 )
 
 
-                # Last chunk keeps its full duration.
                 if index < len(chunks) - 1:
 
                     next_time = (
@@ -1672,7 +1658,6 @@ if "myanmar_recap" in st.session_state:
                     end_time
                     - TTS_CROSSFADE
                 )
-
 
                 current_time = max(
                     current_time,
@@ -1718,10 +1703,6 @@ if "myanmar_recap" in st.session_state:
                 "tts_rate"
             ] = tts_rate
 
-
-            # =================================================
-            # RESULTS
-            # =================================================
 
             st.success(
                 f"✅ Myanmar {voice_gender} voiceover generated!"
@@ -1813,8 +1794,8 @@ if "subtitle_data" in st.session_state:
 
 
     st.caption(
-        "ℹ️ Subtitle timing comes directly "
-        "from the TTS segments."
+        "ℹ️ Subtitle: short = 1 line, "
+        "long = maximum 2 lines."
     )
 
 
@@ -2203,6 +2184,13 @@ if (
             # ASS SUBTITLES
             # =================================================
 
+            # Manual font size
+            # Default = 50
+            font_size = int(
+                subtitle_font_size
+            )
+
+
             ass_content = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 576
@@ -2211,7 +2199,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Myanmar,Noto Sans Myanmar,{int(subtitle_font_size)},&H00FFFFFF,&H00FFFFFF,&H00000000,&H99000000,0,0,0,0,100,100,0,0,1,2,1,2,40,40,55,1
+Style: Myanmar,Noto Sans Myanmar,{font_size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H99000000,0,0,0,0,100,100,0,0,1,2,0,2,40,40,55,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -2236,9 +2224,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     )
                 )
 
+                # Maximum 2 lines
                 text = wrap_myanmar(
                     item["text"],
-                    24
+                    28
                 )
 
                 text = text.replace(
