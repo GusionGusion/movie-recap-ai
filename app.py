@@ -182,8 +182,6 @@ def wrap_myanmar(
     Rules:
     - Short text = 1 line
     - Long text = maximum 2 lines
-    - Never intentionally create 3 or 4 lines
-    - Designed for large subtitle font sizes
     """
 
     text = str(text).strip()
@@ -197,18 +195,9 @@ def wrap_myanmar(
     if not text:
         return ""
 
-    # -----------------------------------------------------
-    # Short subtitle → one line
-    # -----------------------------------------------------
-
     if len(text) <= max_chars:
 
         return text
-
-
-    # -----------------------------------------------------
-    # Try word-based balanced 2-line split
-    # -----------------------------------------------------
 
     words = text.split()
 
@@ -225,15 +214,8 @@ def wrap_myanmar(
             + text[midpoint:]
         )
 
-
-    total_length = len(text)
-
-    target = total_length / 2
-
     best_split = None
-
     best_difference = None
-
 
     for split_index in range(
         1,
@@ -262,9 +244,7 @@ def wrap_myanmar(
         ):
 
             best_difference = difference
-
             best_split = split_index
-
 
     if best_split is None:
 
@@ -279,7 +259,6 @@ def wrap_myanmar(
             + text[midpoint:]
         )
 
-
     line1 = " ".join(
         words[:best_split]
     ).strip()
@@ -287,12 +266,6 @@ def wrap_myanmar(
     line2 = " ".join(
         words[best_split:]
     ).strip()
-
-
-    if not line2:
-
-        return line1
-
 
     return (
         line1
@@ -397,320 +370,10 @@ def load_whisper_model(
 
 
 # =========================================================
-# VIDEO SPLIT + MERGE HELPERS
+# VIDEO SPLIT SETTINGS
 # =========================================================
 
 SPLIT_DURATION = 60.0
-
-
-def split_video_into_parts(
-    input_video,
-    output_dir,
-    split_duration=60.0
-):
-    """
-    Split a video into 60-second parts.
-
-    This is FFmpeg-only processing.
-    Gemini API is NOT called here.
-    """
-
-    os.makedirs(
-        output_dir,
-        exist_ok=True
-    )
-
-    duration = get_audio_duration(
-        input_video
-    )
-
-    if duration <= split_duration:
-
-        return [
-            input_video
-        ]
-
-    part_count = int(
-        math.ceil(
-            duration / split_duration
-        )
-    )
-
-    part_files = []
-
-    for index in range(
-        part_count
-    ):
-
-        start_time = (
-            index * split_duration
-        )
-
-        part_file = os.path.join(
-            output_dir,
-            f"part_{index + 1:03d}.mp4"
-        )
-
-        command = [
-            "ffmpeg",
-            "-y",
-            "-ss",
-            f"{start_time:.3f}",
-            "-i",
-            input_video,
-            "-t",
-            f"{split_duration:.3f}",
-            "-map",
-            "0",
-            "-c",
-            "copy",
-            part_file
-        ]
-
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True
-        )
-
-        if result.returncode != 0:
-
-            # Fallback to accurate re-encoding
-            fallback_command = [
-                "ffmpeg",
-                "-y",
-                "-ss",
-                f"{start_time:.3f}",
-                "-i",
-                input_video,
-                "-t",
-                f"{split_duration:.3f}",
-                "-map",
-                "0:v:0",
-                "-map",
-                "0:a?",
-                "-c:v",
-                "libx264",
-                "-preset",
-                "ultrafast",
-                "-crf",
-                "27",
-                "-pix_fmt",
-                "yuv420p",
-                "-c:a",
-                "aac",
-                "-b:a",
-                "128k",
-                part_file
-            ]
-
-            fallback_result = subprocess.run(
-                fallback_command,
-                capture_output=True,
-                text=True
-            )
-
-            if fallback_result.returncode != 0:
-
-                raise RuntimeError(
-                    fallback_result.stderr[-3000:]
-                )
-
-        if os.path.isfile(
-            part_file
-        ):
-
-            part_files.append(
-                part_file
-            )
-
-    return part_files
-
-
-def merge_video_parts(
-    part_files,
-    output_file
-):
-    """
-    Merge already rendered video parts.
-
-    Gemini API is NOT called.
-    """
-
-    if not part_files:
-
-        raise RuntimeError(
-            "No video parts available for merge."
-        )
-
-
-    if len(part_files) == 1:
-
-        shutil.copyfile(
-            part_files[0],
-            output_file
-        )
-
-        return output_file
-
-
-    concat_file = os.path.join(
-        os.path.dirname(output_file),
-        "movie_recap_concat.txt"
-    )
-
-
-    with open(
-        concat_file,
-        "w",
-        encoding="utf-8"
-    ) as f:
-
-        for part in part_files:
-
-            safe_path = (
-                os.path.abspath(part)
-                .replace(
-                    "\\",
-                    "/"
-                )
-                .replace(
-                    "'",
-                    "'\\''"
-                )
-            )
-
-            f.write(
-                f"file '{safe_path}'\n"
-            )
-
-
-    command = [
-        "ffmpeg",
-        "-y",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        concat_file,
-        "-c",
-        "copy",
-        output_file
-    ]
-
-
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True
-    )
-
-
-    if result.returncode != 0:
-
-        # Fallback if stream copy cannot concatenate
-        fallback_command = [
-            "ffmpeg",
-            "-y",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            concat_file,
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-crf",
-            "27",
-            "-pix_fmt",
-            "yuv420p",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "128k",
-            output_file
-        ]
-
-        fallback_result = subprocess.run(
-            fallback_command,
-            capture_output=True,
-            text=True
-        )
-
-        if fallback_result.returncode != 0:
-
-            raise RuntimeError(
-                fallback_result.stderr[-5000:]
-            )
-
-
-    return output_file
-
-
-def split_and_merge_final_video(
-    input_video,
-    work_dir,
-    split_duration=60.0
-):
-    """
-    Final export split mode.
-
-    1. Check duration.
-    2. If <= 60 sec, return original.
-    3. If > 60 sec, split into 60-sec parts.
-    4. Merge all parts back into one final video.
-
-    No Gemini API calls are made.
-    """
-
-    duration = get_audio_duration(
-        input_video
-    )
-
-    if duration <= split_duration:
-
-        return input_video, 1
-
-
-    split_dir = os.path.join(
-        work_dir,
-        "split_parts"
-    )
-
-    os.makedirs(
-        split_dir,
-        exist_ok=True
-    )
-
-
-    part_files = split_video_into_parts(
-        input_video,
-        split_dir,
-        split_duration
-    )
-
-
-    if len(part_files) <= 1:
-
-        return input_video, 1
-
-
-    merged_file = os.path.join(
-        work_dir,
-        "final_movie_recap_merged.mp4"
-    )
-
-
-    merge_video_parts(
-        part_files,
-        merged_file
-    )
-
-
-    return merged_file, len(part_files)
 
 
 # =========================================================
@@ -864,9 +527,8 @@ if uploaded_file is not None:
 
             st.info(
                 f"✂️ Split Mode: ON • "
-                f"Video will be handled in "
-                f"{split_count} × 60-second parts "
-                f"before final merge."
+                f"{split_count} × 60-second "
+                f"processing parts."
             )
 
         else:
@@ -1280,7 +942,6 @@ if "transcript_result" in st.session_state:
                             usable_segments
                         )
 
-
                     for seg in selected_segments:
 
                         start = float(
@@ -1333,9 +994,7 @@ if "transcript_result" in st.session_state:
                             }
                         )
 
-
                     cap.release()
-
 
                     if not scene_items:
 
@@ -1395,7 +1054,6 @@ Rules:
                             )
                         )
 
-
                         for index, item in enumerate(
                             scene_items,
                             start=1
@@ -1424,7 +1082,6 @@ Rules:
                                 )
                             )
 
-
                         response = (
                             client.models.generate_content(
                                 model="gemini-3.6-flash",
@@ -1432,13 +1089,11 @@ Rules:
                             )
                         )
 
-
                         scene_analysis = (
                             response.text
                             if response
                             else ""
                         )
-
 
                         if scene_analysis:
 
@@ -1461,7 +1116,6 @@ Rules:
                             st.error(
                                 "❌ Gemini returned no scene analysis."
                             )
-
 
             except Exception as e:
 
@@ -1734,7 +1388,6 @@ if "myanmar_recap" in st.session_state:
                 ]
             ).strip()
 
-
             if not text:
 
                 st.error(
@@ -1743,12 +1396,10 @@ if "myanmar_recap" in st.session_state:
 
                 st.stop()
 
-
             chunks = split_myanmar_text(
                 text,
                 max_chars=100
             )
-
 
             if not chunks:
 
@@ -1758,27 +1409,21 @@ if "myanmar_recap" in st.session_state:
 
                 st.stop()
 
-
             st.info(
                 f"📝 Narration divided into "
                 f"{len(chunks)} voice segments."
             )
 
-
             work_dir = tempfile.mkdtemp(
                 prefix="movie_recap_voice_"
             )
 
-
             raw_files = []
-
             raw_durations = []
-
 
             progress = st.progress(
                 0
             )
-
 
             # =================================================
             # TTS GENERATION
@@ -1815,11 +1460,9 @@ if "myanmar_recap" in st.session_state:
 
                 return results
 
-
             raw_files = asyncio.run(
                 create_all_tts()
             )
-
 
             # =================================================
             # MEASURE ACTUAL DURATIONS
@@ -1842,16 +1485,13 @@ if "myanmar_recap" in st.session_state:
                     / len(raw_files)
                 )
 
-
             # =================================================
             # NATURAL CROSSFADE
             # =================================================
 
             TTS_CROSSFADE = 0.06
 
-
             normalized_files = []
-
 
             for index, raw_file in enumerate(
                 raw_files
@@ -1891,7 +1531,6 @@ if "myanmar_recap" in st.session_state:
                     normalized_file
                 )
 
-
             # =================================================
             # COMBINE WITH ACROSSFADE
             # =================================================
@@ -1900,7 +1539,6 @@ if "myanmar_recap" in st.session_state:
                 work_dir,
                 "combined.wav"
             )
-
 
             if len(normalized_files) == 1:
 
@@ -1922,11 +1560,9 @@ if "myanmar_recap" in st.session_state:
                         ]
                     )
 
-
                 filter_parts = []
 
                 previous_label = "[0:a]"
-
 
                 for i in range(
                     1,
@@ -1953,11 +1589,9 @@ if "myanmar_recap" in st.session_state:
                         output_label
                     )
 
-
                 filter_complex = ";".join(
                     filter_parts
                 )
-
 
                 combine_command = [
                     "ffmpeg",
@@ -1980,20 +1614,17 @@ if "myanmar_recap" in st.session_state:
                     ]
                 )
 
-
                 combine_result = subprocess.run(
                     combine_command,
                     capture_output=True,
                     text=True
                 )
 
-
                 if combine_result.returncode != 0:
 
                     raise RuntimeError(
                         combine_result.stderr[-3000:]
                     )
-
 
             # =================================================
             # FINAL MP3
@@ -2003,7 +1634,6 @@ if "myanmar_recap" in st.session_state:
                 work_dir,
                 "myanmar_voiceover.mp3"
             )
-
 
             convert_result = subprocess.run(
                 [
@@ -2021,13 +1651,11 @@ if "myanmar_recap" in st.session_state:
                 text=True
             )
 
-
             if convert_result.returncode != 0:
 
                 raise RuntimeError(
                     convert_result.stderr[-3000:]
                 )
-
 
             # =================================================
             # ACTUAL FINAL DURATION
@@ -2037,7 +1665,6 @@ if "myanmar_recap" in st.session_state:
                 final_voice_file
             )
 
-
             # =================================================
             # SUBTITLE TIMING
             # =================================================
@@ -2045,7 +1672,6 @@ if "myanmar_recap" in st.session_state:
             subtitle_data = []
 
             current_time = 0.0
-
 
             for index, chunk in enumerate(
                 chunks
@@ -2064,7 +1690,6 @@ if "myanmar_recap" in st.session_state:
                     + raw_duration
                 )
 
-
                 if index < len(chunks) - 1:
 
                     next_time = (
@@ -2076,12 +1701,10 @@ if "myanmar_recap" in st.session_state:
 
                     next_time = end_time
 
-
                 next_time = min(
                     next_time,
                     voice_duration
                 )
-
 
                 if next_time <= start_time:
 
@@ -2089,7 +1712,6 @@ if "myanmar_recap" in st.session_state:
                         voice_duration,
                         start_time + 0.05
                     )
-
 
                 if start_time < voice_duration:
 
@@ -2101,7 +1723,6 @@ if "myanmar_recap" in st.session_state:
                         }
                     )
 
-
                 current_time = (
                     end_time
                     - TTS_CROSSFADE
@@ -2111,7 +1732,6 @@ if "myanmar_recap" in st.session_state:
                     current_time,
                     0
                 )
-
 
             # =================================================
             # SESSION STATE
@@ -2150,7 +1770,6 @@ if "myanmar_recap" in st.session_state:
             st.session_state[
                 "tts_rate"
             ] = tts_rate
-
 
             st.success(
                 f"✅ Myanmar {voice_gender} voiceover generated!"
@@ -2221,7 +1840,6 @@ if "subtitle_data" in st.session_state:
         "with the generated voiceover."
     )
 
-
     preview_text = "\n".join(
         [
             f'{item["start"]:.2f}s → '
@@ -2233,13 +1851,11 @@ if "subtitle_data" in st.session_state:
         ]
     )
 
-
     st.text_area(
         "💬 Myanmar Subtitle Preview",
         preview_text,
         height=400
     )
-
 
     st.caption(
         "ℹ️ Subtitle: short = 1 line, "
@@ -2263,7 +1879,6 @@ if "subtitle_data" in st.session_state:
 
     srt_lines = []
 
-
     for i, item in enumerate(
         st.session_state[
             "subtitle_data"
@@ -2283,7 +1898,6 @@ if "subtitle_data" in st.session_state:
             item["text"]
         ).strip()
 
-
         start_h = int(
             start // 3600
         )
@@ -2299,7 +1913,6 @@ if "subtitle_data" in st.session_state:
         start_ms = int(
             (start % 1) * 1000
         )
-
 
         end_h = int(
             end // 3600
@@ -2317,14 +1930,12 @@ if "subtitle_data" in st.session_state:
             (end % 1) * 1000
         )
 
-
         start_time = (
             f"{start_h:02d}:"
             f"{start_m:02d}:"
             f"{start_s:02d},"
             f"{start_ms:03d}"
         )
-
 
         end_time = (
             f"{end_h:02d}:"
@@ -2333,7 +1944,6 @@ if "subtitle_data" in st.session_state:
             f"{end_ms:03d}"
         )
 
-
         srt_lines.append(
             f"{i}\n"
             f"{start_time} --> "
@@ -2341,11 +1951,9 @@ if "subtitle_data" in st.session_state:
             f"{text}\n"
         )
 
-
     srt_content = "\n".join(
         srt_lines
     )
-
 
     st.download_button(
         "📥 Download Myanmar Subtitle (.srt)",
@@ -2414,9 +2022,7 @@ if "subtitle_data" in st.session_state:
         0
     )
 
-
     fixed_subtitles = []
-
 
     for item in st.session_state[
         "subtitle_data"
@@ -2437,11 +2043,9 @@ if "subtitle_data" in st.session_state:
             item["text"]
         ).strip()
 
-
         if not text:
 
             continue
-
 
         if subtitle_duration > 0:
 
@@ -2454,11 +2058,9 @@ if "subtitle_data" in st.session_state:
                 subtitle_duration
             )
 
-
         if end <= start:
 
             continue
-
 
         fixed_subtitles.append(
             {
@@ -2468,16 +2070,13 @@ if "subtitle_data" in st.session_state:
             }
         )
 
-
     st.session_state[
         "subtitle_data"
     ] = fixed_subtitles
 
-
     st.session_state[
         "subtitle_timing_source"
     ] = "tts_segments_crossfade"
-
 
     st.success(
         f"✅ Voiceover synced: "
@@ -2541,13 +2140,9 @@ if (
     "uploaded_file" in st.session_state
 ):
 
-    # =====================================================
-    # SPLIT MODE SETTINGS
-    # =====================================================
-
     st.caption(
         "✂️ Videos longer than 1 minute are automatically "
-        "exported in 60-second parts and combined again."
+        "processed in 60-second timeline parts."
     )
 
     split_mode = st.checkbox(
@@ -2558,20 +2153,19 @@ if (
 
     split_duration = 60.0
 
-
     if split_mode:
 
         st.info(
             "✂️ Split Mode ON — "
-            "Each part will be exported for 60 seconds "
-            "and combined into one final video."
+            "Video, Voiceover and Subtitle timing "
+            "are handled part-by-part."
         )
 
     else:
 
         st.info(
             "🎬 Split Mode OFF — "
-            "Video will be exported normally."
+            "Video will be exported as one timeline."
         )
 
 
@@ -2589,7 +2183,6 @@ if (
                 tempfile.gettempdir(),
                 "movie_recap_original.mp4"
             )
-
 
             with open(
                 original_video,
@@ -2611,27 +2204,25 @@ if (
 
 
             # =================================================
-            # VIDEO DURATION
+            # READ DURATIONS
             # =================================================
 
             video_duration = get_audio_duration(
                 original_video
             )
 
-
-            # =================================================
-            # VOICEOVER DURATION
-            # =================================================
-
             voice_duration = get_audio_duration(
                 voice_file
             )
-
 
             st.session_state[
                 "voice_duration"
             ] = voice_duration
 
+            st.info(
+                f"🎬 Source Video: "
+                f"{video_duration:.2f} sec"
+            )
 
             st.info(
                 f"🎙️ Voiceover: "
@@ -2659,17 +2250,16 @@ if (
                     video_duration + 1
                 )
 
-                freeze_time = 0
+                freeze_time = 0.0
 
 
             # =================================================
-            # ASS SUBTITLE SETTINGS
+            # SUBTITLE SETTINGS
             # =================================================
 
             font_size = int(
                 subtitle_font_size
             )
-
 
             subtitle_wrap_chars = max(
                 10,
@@ -2685,22 +2275,27 @@ if (
 
 
             # =================================================
-            # TEMP EXPORT DIRECTORY
+            # EXPORT DIRECTORY
             # =================================================
 
             export_dir = tempfile.mkdtemp(
-                prefix="movie_recap_split_export_"
+                prefix="movie_recap_export_"
             )
 
 
-            part_files = []
-
-
             # =================================================
-            # DETERMINE SPLIT COUNT
+            # PART COUNT
+            #
+            # IMPORTANT:
+            # Split is based on SOURCE TIMELINE.
+            # Gemini / Whisper / TTS are NOT repeated.
             # =================================================
 
-            if split_mode and video_duration > split_duration:
+            if (
+                split_mode
+                and
+                video_duration > split_duration
+            ):
 
                 part_count = int(
                     math.ceil(
@@ -2715,9 +2310,12 @@ if (
 
 
             st.write(
-                f"🎬 Export Parts: "
+                f"✂️ Export Parts: "
                 f"{part_count}"
             )
+
+
+            part_files = []
 
 
             # =================================================
@@ -2728,37 +2326,51 @@ if (
                 part_count
             ):
 
-                part_start = (
-                    part_index
-                    * split_duration
-                    if part_count > 1
-                    else 0
-                )
+                # ---------------------------------------------
+                # SOURCE TIMELINE
+                # ---------------------------------------------
 
-                part_end = min(
-                    part_start + split_duration,
-                    video_duration
-                )
+                if part_count > 1:
+
+                    part_start = (
+                        part_index
+                        * split_duration
+                    )
+
+                    part_end = min(
+                        part_start
+                        + split_duration,
+                        video_duration
+                    )
+
+                else:
+
+                    part_start = 0.0
+
+                    part_end = video_duration
 
 
-                part_video_duration = (
+                source_part_duration = (
                     part_end
                     - part_start
                 )
 
 
                 st.info(
-                    f"⏳ Exporting Part "
+                    f"⏳ Part "
                     f"{part_index + 1}/{part_count} "
-                    f"("
-                    f"{part_start:.1f}s → "
-                    f"{part_end:.1f}s"
-                    f")"
+                    f"• Source "
+                    f"{part_start:.2f}s → "
+                    f"{part_end:.2f}s"
                 )
 
 
                 # =================================================
-                # LOCAL SUBTITLE ASS FILE
+                # LOCAL SUBTITLE ASS
+                #
+                # IMPORTANT:
+                # Global subtitle time is converted to local
+                # part time.
                 # =================================================
 
                 ass_content = f"""[Script Info]
@@ -2777,23 +2389,19 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
 
-                # =================================================
-                # SUBTITLES BELONGING TO THIS PART
-                # =================================================
-
                 for item in st.session_state[
                     "subtitle_data"
                 ]:
 
                     global_start = max(
-                        0,
+                        0.0,
                         float(
                             item["start"]
                         )
                     )
 
                     global_end = max(
-                        global_start + 0.1,
+                        global_start + 0.05,
                         float(
                             item["end"]
                         )
@@ -2801,7 +2409,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
                     # ---------------------------------------------
-                    # Skip subtitles outside this part
+                    # Subtitle does not overlap this source part
                     # ---------------------------------------------
 
                     if global_end <= part_start:
@@ -2814,17 +2422,28 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
                     # ---------------------------------------------
-                    # Convert global timing → local timing
+                    # Clip subtitle to source part
                     # ---------------------------------------------
 
-                    local_start = max(
-                        0,
-                        global_start - part_start
+                    clipped_start = max(
+                        global_start,
+                        part_start
                     )
 
-                    local_end = min(
-                        part_video_duration,
-                        global_end - part_start
+                    clipped_end = min(
+                        global_end,
+                        part_end
+                    )
+
+
+                    local_start = (
+                        clipped_start
+                        - part_start
+                    )
+
+                    local_end = (
+                        clipped_end
+                        - part_start
                     )
 
 
@@ -2833,19 +2452,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         continue
 
 
-                    # ---------------------------------------------
-                    # Wrap Myanmar subtitle
-                    # ---------------------------------------------
-
                     text = wrap_myanmar(
                         item["text"],
                         subtitle_wrap_chars
                     )
 
-
-                    # ---------------------------------------------
-                    # ASS escaping
-                    # ---------------------------------------------
 
                     text = text.replace(
                         "{",
@@ -2856,7 +2467,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         "}",
                         "\\}"
                     )
-
 
                     text = (
                         "{\\q2}"
@@ -2874,12 +2484,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
                 # =================================================
-                # SAVE PART ASS
+                # SAVE ASS
                 # =================================================
 
                 ass_file = os.path.join(
                     export_dir,
-                    f"part_{part_index:03d}.ass"
+                    f"subtitle_part_{part_index:03d}.ass"
                 )
 
 
@@ -2893,10 +2503,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         ass_content
                     )
 
-
-                # =================================================
-                # ESCAPE ASS PATH
-                # =================================================
 
                 ass_filter_file = (
                     ass_file
@@ -2913,27 +2519,32 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
                 # =================================================
-                # PART VIDEO FILTER
+                # VIDEO FILTER
+                #
+                # IMPORTANT:
+                # NO -ss + ABSOLUTE trim mismatch.
+                #
+                # We feed the full source video and trim using
+                # absolute timestamps.
                 # =================================================
 
                 filter_parts = []
 
-                labels = []
+                video_labels = []
 
 
                 # =================================================
-                # FREEZE + ZOOM FOR THIS PART
+                # FREEZE + ZOOM
                 # =================================================
 
                 if freeze_enabled:
 
                     local_segment_count = int(
                         math.ceil(
-                            part_video_duration
+                            source_part_duration
                             / interval
                         )
                     )
-
 
                     for local_index in range(
                         local_segment_count
@@ -2945,20 +2556,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         )
 
                         local_end = min(
-                            (local_index + 1)
+                            (
+                                local_index
+                                + 1
+                            )
                             * interval,
-                            part_video_duration
+                            source_part_duration
                         )
 
 
                         if local_end <= local_start:
 
                             continue
-
-
-                        normal_label = (
-                            f"normal_{part_index}_{local_index}"
-                        )
 
 
                         absolute_start = (
@@ -2972,11 +2581,20 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         )
 
 
+                        # -----------------------------------------
+                        # Normal video segment
+                        # -----------------------------------------
+
+                        normal_label = (
+                            f"normal_{part_index}_{local_index}"
+                        )
+
+
                         normal_filter = (
                             f"[0:v]"
                             f"trim="
-                            f"start={absolute_start}:"
-                            f"end={absolute_end},"
+                            f"start={absolute_start:.6f}:"
+                            f"end={absolute_end:.6f},"
                             f"setpts=PTS-STARTPTS,"
                             f"scale=576:1024,"
                             f"setsar=1"
@@ -2989,19 +2607,19 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         )
 
 
-                        labels.append(
+                        video_labels.append(
                             f"[{normal_label}]"
                         )
 
 
-                        # =========================================
-                        # FREEZE FRAME + ZOOM
-                        # =========================================
+                        # -----------------------------------------
+                        # Freeze + Zoom
+                        # -----------------------------------------
 
                         if (
                             local_end
                             <
-                            part_video_duration
+                            source_part_duration
                         ):
 
                             freeze_label = (
@@ -3018,8 +2636,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             freeze_filter = (
                                 f"[0:v]"
                                 f"trim="
-                                f"start={frame_time}:"
-                                f"end={frame_time + 0.0334},"
+                                f"start={frame_time:.6f}:"
+                                f"end={frame_time + 0.0334:.6f},"
                                 f"setpts=PTS-STARTPTS,"
                                 f"select='eq(n,0)',"
                                 f"scale=576:1024,"
@@ -3042,22 +2660,22 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             )
 
 
-                            labels.append(
+                            video_labels.append(
                                 f"[{freeze_label}]"
                             )
 
 
-                    if labels:
+                    if video_labels:
 
                         concat_inputs = "".join(
-                            labels
+                            video_labels
                         )
 
 
                         concat_filter = (
                             f"{concat_inputs}"
                             f"concat="
-                            f"n={len(labels)}:"
+                            f"n={len(video_labels)}:"
                             f"v=1:"
                             f"a=0:"
                             f"unsafe=1,"
@@ -3084,6 +2702,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                     filter_parts.append(
                         "[0:v]"
+                        f"trim="
+                        f"start={part_start:.6f}:"
+                        f"end={part_end:.6f},"
+                        "setpts=PTS-STARTPTS,"
                         "scale=576:1024,"
                         "setsar=1,"
                         "format=yuv420p"
@@ -3095,7 +2717,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 # SUBTITLE OVERLAY
                 # =================================================
 
-                subtitle_filter = (
+                filter_parts.append(
                     "[basevideo]"
                     f"ass=filename='{ass_filter_file}'"
                     f":fontsdir='{ass_fonts_dir}'"
@@ -3103,48 +2725,165 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 )
 
 
-                filter_parts.append(
-                    subtitle_filter
+                # =================================================
+                # VOICEOVER PART
+                #
+                # Global voice timeline:
+                # Part 1 = 0 → 60
+                # Part 2 = 60 → 120
+                # Part 3 = 120 → ...
+                # =================================================
+
+                voice_start = min(
+                    part_start,
+                    voice_duration
+                )
+
+                voice_end = min(
+                    part_end,
+                    voice_duration
+                )
+
+
+                voice_part_duration = max(
+                    0.0,
+                    voice_end
+                    - voice_start
                 )
 
 
                 # =================================================
-                # PART VOICEOVER
+                # FREEZE VIDEO DURATION
                 # =================================================
 
-                # -----------------------------------------------
-                # We take the correct section of the global
-                # voiceover for this video part.
-                # -----------------------------------------------
+                if freeze_enabled:
 
-                voice_local_start = max(
-                    0,
-                    part_start
+                    freeze_count = max(
+                        0,
+                        local_segment_count - 1
+                    )
+
+                else:
+
+                    freeze_count = 0
+
+
+                video_output_duration = (
+                    source_part_duration
+                    +
+                    (
+                        freeze_count
+                        * freeze_time
+                    )
                 )
 
 
-                voice_local_duration = max(
-                    0,
-                    min(
+                # =================================================
+                # TARGET DURATION
+                # =================================================
+
+                part_target_duration = max(
+                    video_output_duration,
+                    voice_part_duration
+                )
+
+
+                # =================================================
+                # EXTEND VIDEO IF VOICE IS LONGER
+                # =================================================
+
+                video_extra_duration = max(
+                    0.0,
+                    voice_part_duration
+                    - video_output_duration
+                )
+
+
+                if video_extra_duration > 0:
+
+                    filter_parts.append(
+                        "[vout]"
+                        f"tpad="
+                        f"stop_mode=clone:"
+                        f"stop_duration="
+                        f"{video_extra_duration:.3f},"
+                        f"start_mode=clone,"
+                        f"setpts=PTS-STARTPTS"
+                        "[vfinal]"
+                    )
+
+                    final_video_label = (
+                        "[vfinal]"
+                    )
+
+                else:
+
+                    final_video_label = (
+                        "[vout]"
+                    )
+
+
+                # =================================================
+                # AUDIO
+                # =================================================
+
+                if voice_part_duration > 0:
+
+                    audio_end = min(
                         part_end,
                         voice_duration
                     )
-                    - voice_local_start
+
+
+                    audio_filter = (
+                        f"[1:a:0]"
+                        f"atrim="
+                        f"start={voice_start:.6f}:"
+                        f"end={audio_end:.6f},"
+                        f"asetpts=PTS-STARTPTS"
+                    )
+
+
+                    audio_pad_duration = max(
+                        0.0,
+                        video_output_duration
+                        - voice_part_duration
+                    )
+
+
+                    if audio_pad_duration > 0:
+
+                        audio_filter += (
+                            f",apad="
+                            f"pad_dur="
+                            f"{audio_pad_duration:.3f}"
+                        )
+
+
+                    audio_filter += (
+                        "[aout]"
+                    )
+
+
+                else:
+
+                    audio_filter = (
+                        "anullsrc="
+                        "channel_layout=stereo:"
+                        "sample_rate=48000,"
+                        f"atrim="
+                        f"duration={video_output_duration:.3f}"
+                        "[aout]"
+                    )
+
+
+                filter_parts.append(
+                    audio_filter
                 )
 
 
                 # =================================================
-                # PART OUTPUT FILE
-                # =================================================
-
-                part_output = os.path.join(
-                    export_dir,
-                    f"part_{part_index:03d}.mp4"
-                )
-
-
-                # =================================================
-                # BUILD FILTER COMPLEX
+                # FINAL FILTER COMPLEX
                 # =================================================
 
                 filter_complex = ";".join(
@@ -3153,199 +2892,28 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
                 # =================================================
-                # PART AUDIO FILTER
+                # PART OUTPUT
                 # =================================================
 
-                if voice_local_duration > 0:
-
-                    audio_filter = (
-                        f"[1:a:0]"
-                        f"atrim="
-                        f"start={voice_local_start}:"
-                        f"end={min(part_end, voice_duration)},"
-                        f"asetpts=PTS-STARTPTS"
-                        f"[aout]"
-                    )
-
-                    filter_complex += (
-                        ";"
-                        + audio_filter
-                    )
-
-                    final_audio_label = (
-                        "[aout]"
-                    )
-
-                else:
-
-                    audio_filter = (
-                        "anullsrc="
-                        "channel_layout=stereo:"
-                        "sample_rate=48000,"
-                        f"atrim=duration={part_video_duration}"
-                        "[aout]"
-                    )
-
-                    filter_complex += (
-                        ";"
-                        + audio_filter
-                    )
-
-                    final_audio_label = (
-                        "[aout]"
-                    )
-
-
-                # =================================================
-                # FREEZE DURATION CALCULATION
-                # =================================================
-
-                if freeze_enabled:
-
-                    local_freeze_count = max(
-                        0,
-                        local_segment_count - 1
-                    )
-
-                else:
-
-                    local_freeze_count = 0
-
-
-                part_base_duration = (
-                    part_video_duration
-                    +
-                    (
-                        local_freeze_count
-                        * freeze_time
-                    )
+                part_output = os.path.join(
+                    export_dir,
+                    f"rendered_part_{part_index:03d}.mp4"
                 )
 
 
                 # =================================================
-                # AUDIO DURATION FOR PART
-                # =================================================
-
-                part_voice_duration = (
-                    voice_local_duration
-                )
-
-
-                part_target_duration = max(
-                    part_base_duration,
-                    part_voice_duration
-                )
-
-
-                part_extra_duration = max(
-                    0,
-                    part_voice_duration
-                    - part_base_duration
-                )
-
-
-                # =================================================
-                # EXTEND FINAL FRAME IF VOICE IS LONGER
-                # =================================================
-
-                if part_extra_duration > 0:
-
-                    filter_parts.append(
-                        "[vout]"
-                        f"tpad="
-                        f"stop_mode=clone:"
-                        f"stop_duration="
-                        f"{part_extra_duration:.3f}:"
-                        f"start_mode=clone,"
-                        f"setpts=PTS-STARTPTS"
-                        "[vout2]"
-                    )
-
-
-                    final_video_label = (
-                        "[vout2]"
-                    )
-
-                else:
-
-                    final_video_label = (
-                        "[vout]"
-                    )
-
-
-                # =================================================
-                # REBUILD FILTER COMPLEX
-                # =================================================
-
-                # The tpad filter may have been added after the
-                # previous filter_complex string was created.
-                # Therefore rebuild everything from filter_parts.
+                # FFMPEG
                 #
-                # First remove the previous audio filter if needed.
-                # =================================================
-
-                video_filter_complex = ";".join(
-                    filter_parts
-                )
-
-
-                # =================================================
-                # AUDIO PADDING
-                # =================================================
-
-                audio_pad_duration = max(
-                    0,
-                    part_base_duration
-                    - part_voice_duration
-                )
-
-
-                if audio_pad_duration > 0:
-
-                    audio_filter = (
-                        f"[1:a:0]"
-                        f"atrim="
-                        f"start={voice_local_start}:"
-                        f"end={min(part_end, voice_duration)},"
-                        f"asetpts=PTS-STARTPTS,"
-                        f"apad="
-                        f"pad_dur={audio_pad_duration:.3f}"
-                        "[aout]"
-                    )
-
-                else:
-
-                    audio_filter = (
-                        f"[1:a:0]"
-                        f"atrim="
-                        f"start={voice_local_start}:"
-                        f"end={min(part_end, voice_duration)},"
-                        f"asetpts=PTS-STARTPTS"
-                        "[aout]"
-                    )
-
-
-                # =================================================
-                # FINAL PART FILTER COMPLEX
-                # =================================================
-
-                filter_complex = (
-                    video_filter_complex
-                    + ";"
-                    + audio_filter
-                )
-
-
-                # =================================================
-                # FFMPEG PART COMMAND
+                # IMPORTANT:
+                # No -ss is used here.
+                #
+                # This prevents the previous absolute-trim /
+                # seek mismatch.
                 # =================================================
 
                 command = [
                     "ffmpeg",
                     "-y",
-
-                    "-ss",
-                    f"{part_start:.3f}",
 
                     "-i",
                     original_video,
@@ -3388,7 +2956,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
                 # =================================================
-                # EXPORT PART
+                # RUN PART EXPORT
                 # =================================================
 
                 result = subprocess.run(
@@ -3402,18 +2970,37 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                     st.error(
                         f"❌ Part "
-                        f"{part_index + 1}"
-                        f" Export Failed"
+                        f"{part_index + 1}/{part_count} "
+                        f"Export Failed"
                     )
 
                     st.code(
-                        result.stderr[-5000:],
+                        result.stderr[-6000:],
                         language="text"
                     )
 
                     raise RuntimeError(
-                        f"Part {part_index + 1} export failed."
+                        f"Part "
+                        f"{part_index + 1} export failed."
                     )
+
+
+                if not os.path.isfile(
+                    part_output
+                ):
+
+                    raise RuntimeError(
+                        f"Part "
+                        f"{part_index + 1} output file "
+                        f"was not created."
+                    )
+
+
+                actual_part_duration = (
+                    get_audio_duration(
+                        part_output
+                    )
+                )
 
 
                 part_files.append(
@@ -3423,18 +3010,21 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 st.success(
                     f"✅ Part "
-                    f"{part_index + 1}/{part_count}"
-                    f" completed."
+                    f"{part_index + 1}/{part_count} "
+                    f"completed • "
+                    f"{actual_part_duration:.2f} sec"
                 )
 
 
             # =====================================================
-            # COMBINE PARTS
+            # MERGE PARTS
             # =====================================================
 
             if len(part_files) == 1:
 
-                output_video = part_files[0]
+                output_video = (
+                    part_files[0]
+                )
 
             else:
 
@@ -3458,9 +3048,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     for part_file in part_files:
 
                         safe_path = (
-                            part_file
-                            .replace("\\", "/")
-                            .replace("'", "'\\''")
+                            os.path.abspath(
+                                part_file
+                            )
+                            .replace(
+                                "\\",
+                                "/"
+                            )
+                            .replace(
+                                "'",
+                                "'\\''"
+                            )
                         )
 
                         f.write(
@@ -3503,18 +3101,68 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 if concat_result.returncode != 0:
 
-                    st.error(
-                        "❌ Could not combine exported parts."
+                    st.warning(
+                        "⚠️ Stream copy merge failed. "
+                        "Trying compatible re-encode..."
                     )
 
-                    st.code(
-                        concat_result.stderr[-5000:],
-                        language="text"
+
+                    fallback_command = [
+                        "ffmpeg",
+                        "-y",
+
+                        "-f",
+                        "concat",
+
+                        "-safe",
+                        "0",
+
+                        "-i",
+                        concat_file,
+
+                        "-c:v",
+                        "libx264",
+
+                        "-preset",
+                        "ultrafast",
+
+                        "-crf",
+                        "27",
+
+                        "-pix_fmt",
+                        "yuv420p",
+
+                        "-c:a",
+                        "aac",
+
+                        "-b:a",
+                        "128k",
+
+                        output_video
+                    ]
+
+
+                    fallback_result = subprocess.run(
+                        fallback_command,
+                        capture_output=True,
+                        text=True
                     )
 
-                    raise RuntimeError(
-                        "Final video combination failed."
-                    )
+
+                    if fallback_result.returncode != 0:
+
+                        st.error(
+                            "❌ Could not combine exported parts."
+                        )
+
+                        st.code(
+                            fallback_result.stderr[-6000:],
+                            language="text"
+                        )
+
+                        raise RuntimeError(
+                            "Final video combination failed."
+                        )
 
 
                 st.success(
@@ -3523,18 +3171,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 )
 
 
-            # =================================================
+            # =====================================================
             # FINAL DURATION
-            # =================================================
+            # =====================================================
 
             final_duration = get_audio_duration(
                 output_video
             )
 
 
-            # =================================================
+            # =====================================================
             # FINAL RESULT
-            # =================================================
+            # =====================================================
 
             st.success(
                 "✅ Final Recap Video "
@@ -3577,19 +3225,34 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             )
 
 
+            st.info(
+                "🔄 Split processing: "
+                "Video + Voiceover + Subtitle "
+                "are rendered part-by-part."
+            )
+
+
             with open(
                 output_video,
                 "rb"
             ) as f:
 
-                st.download_button(
-                    "⬇️ Download Final Video",
-                    f.read(),
-                    file_name=(
-                        "final_movie_recap.mp4"
-                    ),
-                    mime="video/mp4"
-                )
+                final_bytes = f.read()
+
+
+            st.video(
+                final_bytes
+            )
+
+
+            st.download_button(
+                "⬇️ Download Final Video",
+                final_bytes,
+                file_name=(
+                    "final_movie_recap.mp4"
+                ),
+                mime="video/mp4"
+            )
 
 
         except Exception as e:
@@ -3597,4 +3260,3 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             st.error(
                 f"❌ Final Video Export Error: {e}"
             )
-                
