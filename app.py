@@ -397,6 +397,323 @@ def load_whisper_model(
 
 
 # =========================================================
+# VIDEO SPLIT + MERGE HELPERS
+# =========================================================
+
+SPLIT_DURATION = 60.0
+
+
+def split_video_into_parts(
+    input_video,
+    output_dir,
+    split_duration=60.0
+):
+    """
+    Split a video into 60-second parts.
+
+    This is FFmpeg-only processing.
+    Gemini API is NOT called here.
+    """
+
+    os.makedirs(
+        output_dir,
+        exist_ok=True
+    )
+
+    duration = get_audio_duration(
+        input_video
+    )
+
+    if duration <= split_duration:
+
+        return [
+            input_video
+        ]
+
+    part_count = int(
+        math.ceil(
+            duration / split_duration
+        )
+    )
+
+    part_files = []
+
+    for index in range(
+        part_count
+    ):
+
+        start_time = (
+            index * split_duration
+        )
+
+        part_file = os.path.join(
+            output_dir,
+            f"part_{index + 1:03d}.mp4"
+        )
+
+        command = [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            f"{start_time:.3f}",
+            "-i",
+            input_video,
+            "-t",
+            f"{split_duration:.3f}",
+            "-map",
+            "0",
+            "-c",
+            "copy",
+            part_file
+        ]
+
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+
+            # Fallback to accurate re-encoding
+            fallback_command = [
+                "ffmpeg",
+                "-y",
+                "-ss",
+                f"{start_time:.3f}",
+                "-i",
+                input_video,
+                "-t",
+                f"{split_duration:.3f}",
+                "-map",
+                "0:v:0",
+                "-map",
+                "0:a?",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-crf",
+                "27",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                part_file
+            ]
+
+            fallback_result = subprocess.run(
+                fallback_command,
+                capture_output=True,
+                text=True
+            )
+
+            if fallback_result.returncode != 0:
+
+                raise RuntimeError(
+                    fallback_result.stderr[-3000:]
+                )
+
+        if os.path.isfile(
+            part_file
+        ):
+
+            part_files.append(
+                part_file
+            )
+
+    return part_files
+
+
+def merge_video_parts(
+    part_files,
+    output_file
+):
+    """
+    Merge already rendered video parts.
+
+    Gemini API is NOT called.
+    """
+
+    if not part_files:
+
+        raise RuntimeError(
+            "No video parts available for merge."
+        )
+
+
+    if len(part_files) == 1:
+
+        shutil.copyfile(
+            part_files[0],
+            output_file
+        )
+
+        return output_file
+
+
+    concat_file = os.path.join(
+        os.path.dirname(output_file),
+        "movie_recap_concat.txt"
+    )
+
+
+    with open(
+        concat_file,
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        for part in part_files:
+
+            safe_path = (
+                os.path.abspath(part)
+                .replace(
+                    "\\",
+                    "/"
+                )
+                .replace(
+                    "'",
+                    "'\\''"
+                )
+            )
+
+            f.write(
+                f"file '{safe_path}'\n"
+            )
+
+
+    command = [
+        "ffmpeg",
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        concat_file,
+        "-c",
+        "copy",
+        output_file
+    ]
+
+
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True
+    )
+
+
+    if result.returncode != 0:
+
+        # Fallback if stream copy cannot concatenate
+        fallback_command = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            concat_file,
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "27",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            output_file
+        ]
+
+        fallback_result = subprocess.run(
+            fallback_command,
+            capture_output=True,
+            text=True
+        )
+
+        if fallback_result.returncode != 0:
+
+            raise RuntimeError(
+                fallback_result.stderr[-5000:]
+            )
+
+
+    return output_file
+
+
+def split_and_merge_final_video(
+    input_video,
+    work_dir,
+    split_duration=60.0
+):
+    """
+    Final export split mode.
+
+    1. Check duration.
+    2. If <= 60 sec, return original.
+    3. If > 60 sec, split into 60-sec parts.
+    4. Merge all parts back into one final video.
+
+    No Gemini API calls are made.
+    """
+
+    duration = get_audio_duration(
+        input_video
+    )
+
+    if duration <= split_duration:
+
+        return input_video, 1
+
+
+    split_dir = os.path.join(
+        work_dir,
+        "split_parts"
+    )
+
+    os.makedirs(
+        split_dir,
+        exist_ok=True
+    )
+
+
+    part_files = split_video_into_parts(
+        input_video,
+        split_dir,
+        split_duration
+    )
+
+
+    if len(part_files) <= 1:
+
+        return input_video, 1
+
+
+    merged_file = os.path.join(
+        work_dir,
+        "final_movie_recap_merged.mp4"
+    )
+
+
+    merge_video_parts(
+        part_files,
+        merged_file
+    )
+
+
+    return merged_file, len(part_files)
+
+
+# =========================================================
 # VIDEO UPLOAD
 # =========================================================
 
@@ -532,6 +849,33 @@ if uploaded_file is not None:
             "video_duration"
         ] = duration_seconds
 
+        # =====================================================
+        # AUTO SPLIT INFORMATION
+        # =====================================================
+
+        if duration_seconds > SPLIT_DURATION:
+
+            split_count = int(
+                math.ceil(
+                    duration_seconds
+                    / SPLIT_DURATION
+                )
+            )
+
+            st.info(
+                f"✂️ Split Mode: ON • "
+                f"Video will be handled in "
+                f"{split_count} × 60-second parts "
+                f"before final merge."
+            )
+
+        else:
+
+            st.info(
+                "✂️ Split Mode: Not required "
+                "for videos 60 seconds or shorter."
+            )
+
         st.divider()
 
         st.subheader(
@@ -631,10 +975,6 @@ st.subheader(
 )
 
 
-# ---------------------------------------------------------
-# Myanmar Font Options
-# ---------------------------------------------------------
-
 FONT_OPTIONS = {
     "Noto Sans Myanmar": {
         "font_name": "Noto Sans Myanmar",
@@ -674,10 +1014,6 @@ selected_font_name = selected_font_info[
 ]
 
 
-# ---------------------------------------------------------
-# Font Folder
-# ---------------------------------------------------------
-
 fonts_dir = os.path.join(
     os.path.dirname(
         os.path.abspath(__file__)
@@ -691,10 +1027,6 @@ selected_font_file = os.path.join(
     selected_font_info["file_name"]
 )
 
-
-# ---------------------------------------------------------
-# Check Selected Font
-# ---------------------------------------------------------
 
 if os.path.isfile(
     selected_font_file
@@ -713,10 +1045,6 @@ else:
     )
 
 
-# ---------------------------------------------------------
-# Font Size
-# ---------------------------------------------------------
-
 subtitle_font_size = st.number_input(
     "📏 Subtitle Font Size (Manual)",
     min_value=20,
@@ -726,10 +1054,6 @@ subtitle_font_size = st.number_input(
     help="Default subtitle font size is 50px."
 )
 
-
-# ---------------------------------------------------------
-# Fixed Yellow Subtitle
-# ---------------------------------------------------------
 
 st.caption(
     "🟡 Subtitle Color: Yellow"
@@ -2282,6 +2606,38 @@ if (
 
 
             # =================================================
+            # SPLIT MODE INFORMATION
+            # =================================================
+
+            if video_duration > SPLIT_DURATION:
+
+                original_part_count = int(
+                    math.ceil(
+                        video_duration
+                        / SPLIT_DURATION
+                    )
+                )
+
+                st.info(
+                    f"✂️ Split Mode: "
+                    f"{original_part_count} parts × "
+                    f"60 seconds"
+                )
+
+                st.caption(
+                    "ℹ️ Split/Merge is FFmpeg-only. "
+                    "Gemini API is not called for this step."
+                )
+
+            else:
+
+                st.info(
+                    "✂️ Split Mode: "
+                    "Not required."
+                )
+
+
+            # =================================================
             # FREEZE SETTINGS
             # =================================================
 
@@ -2313,14 +2669,6 @@ if (
             )
 
 
-            # -------------------------------------------------
-            # Keep physical subtitle width reasonable when
-            # using large font sizes.
-            #
-            # 28px → around 24 chars
-            # 50px → around 14 chars
-            # -------------------------------------------------
-
             subtitle_wrap_chars = max(
                 10,
                 int(
@@ -2336,17 +2684,6 @@ if (
 
             # =================================================
             # YELLOW SUBTITLE + SELECTED MYANMAR FONT
-            # =================================================
-            #
-            # ASS color format:
-            # &HAABBGGRR
-            #
-            # Yellow RGB = FF FF 00
-            # Therefore:
-            # &H0000FFFF
-            #
-            # Outline = Black
-            # &H00000000
             # =================================================
 
             ass_content = f"""[Script Info]
@@ -2384,19 +2721,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 )
 
 
-                # -------------------------------------------------
-                # FORCE MAXIMUM 2 LINES
-                # -------------------------------------------------
-
                 text = wrap_myanmar(
                     item["text"],
                     subtitle_wrap_chars
                 )
 
-
-                # -------------------------------------------------
-                # ASS special-character escaping
-                # -------------------------------------------------
 
                 text = text.replace(
                     "{",
@@ -2408,11 +2737,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     "\\}"
                 )
 
-
-                # -------------------------------------------------
-                # \q2 prevents ASS from creating extra automatic
-                # lines. Manual \N is used for the second line.
-                # -------------------------------------------------
 
                 text = (
                     "{\\q2}"
@@ -2589,18 +2913,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             # =================================================
             # SUBTITLE OVERLAY
             # =================================================
-            #
-            # fontsdir points FFmpeg/libass to:
-            #
-            # movie-recap-ai/fonts/
-            #
-            # This allows the selected .ttf file to be used
-            # without installing it into the operating system.
-            # =================================================
-
-            # -------------------------------------------------
-            # FFmpeg filter path escaping
-            # -------------------------------------------------
 
             ass_filter_file = (
                 ass_file
@@ -2653,19 +2965,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 )
             )
 
-
-            # -------------------------------------------------
-            # Target duration:
-            #
-            # If voice is longer:
-            #     extend final video frame.
-            #
-            # If voice is shorter:
-            #     keep full video duration and pad audio.
-            #
-            # This prevents 1.2x voice speed from causing the
-            # final video to be cut too early.
-            # -------------------------------------------------
 
             target_duration = max(
                 base_video_duration,
@@ -2775,7 +3074,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
             output_video = os.path.join(
                 tempfile.gettempdir(),
-                "final_movie_recap.mp4"
+                "final_movie_recap_raw.mp4"
             )
 
 
@@ -2839,8 +3138,68 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
             else:
 
-                final_duration = get_audio_duration(
+                # =================================================
+                # 60 SECOND SPLIT + MERGE
+                # =================================================
+
+                final_output_video = (
                     output_video
+                )
+
+                split_part_count = 1
+
+
+                if target_duration > SPLIT_DURATION:
+
+                    st.info(
+                        "✂️ Final video is longer than "
+                        "60 seconds."
+                    )
+
+                    st.info(
+                        "✂️ Splitting into 60-second parts..."
+                    )
+
+
+                    split_merge_dir = tempfile.mkdtemp(
+                        prefix="movie_recap_split_"
+                    )
+
+
+                    try:
+
+                        final_output_video, split_part_count = (
+                            split_and_merge_final_video(
+                                output_video,
+                                split_merge_dir,
+                                SPLIT_DURATION
+                            )
+                        )
+
+                    except Exception as split_error:
+
+                        st.warning(
+                            "⚠️ Split/Merge failed. "
+                            "Using the original exported video."
+                        )
+
+                        st.warning(
+                            f"Split/Merge detail: {split_error}"
+                        )
+
+                        final_output_video = (
+                            output_video
+                        )
+
+                        split_part_count = 1
+
+
+                # =================================================
+                # FINAL RESULT
+                # =================================================
+
+                final_duration = get_audio_duration(
+                    final_output_video
                 )
 
 
@@ -2848,6 +3207,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     "✅ Final Recap Video "
                     "Created Successfully!"
                 )
+
+
+                if split_part_count > 1:
+
+                    st.success(
+                        f"✂️ Split Mode completed: "
+                        f"{split_part_count} parts "
+                        f"merged into 1 final video."
+                    )
 
 
                 st.info(
@@ -2886,7 +3254,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
                 with open(
-                    output_video,
+                    final_output_video,
                     "rb"
                 ) as f:
 
