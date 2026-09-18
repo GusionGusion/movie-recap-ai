@@ -790,12 +790,130 @@ if uploaded_file is not None:
                 whisper_model
             )
 
-            result = model.transcribe(
+            # =================================================
+            # EXTRACT AUDIO FOR WHISPER
+            #
+            # Only this part is changed.
+            #
+            # The video is converted to a clean:
+            # - Mono
+            # - 16 kHz
+            # - PCM WAV
+            #
+            # Then Whisper transcribes the WAV file.
+            # =================================================
+
+            video_path_for_whisper = (
                 st.session_state[
                     "video_path"
-                ],
-                language="en"
+                ]
             )
+
+            whisper_work_dir = tempfile.mkdtemp(
+                prefix="movie_recap_whisper_"
+            )
+
+            whisper_audio_path = os.path.join(
+                whisper_work_dir,
+                "whisper_audio.wav"
+            )
+
+            audio_extract_result = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    video_path_for_whisper,
+                    "-vn",
+                    "-ac",
+                    "1",
+                    "-ar",
+                    "16000",
+                    "-c:a",
+                    "pcm_s16le",
+                    whisper_audio_path
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            if (
+                audio_extract_result.returncode != 0
+                or
+                not os.path.isfile(
+                    whisper_audio_path
+                )
+            ):
+
+                raise RuntimeError(
+                    "Could not extract audio from the video.\n\n"
+                    +
+                    audio_extract_result.stderr[-3000:]
+                )
+
+            # =================================================
+            # CHECK EXTRACTED AUDIO
+            # =================================================
+
+            audio_file_size = os.path.getsize(
+                whisper_audio_path
+            )
+
+            if audio_file_size < 1000:
+
+                raise RuntimeError(
+                    "The extracted audio file is empty "
+                    "or too small to transcribe."
+                )
+
+            whisper_audio_duration = (
+                get_audio_duration(
+                    whisper_audio_path
+                )
+            )
+
+            if whisper_audio_duration <= 0.05:
+
+                raise RuntimeError(
+                    "No usable audio track was found "
+                    "in this video."
+                )
+
+            st.info(
+                f"🎧 Whisper Audio: "
+                f"{whisper_audio_duration:.2f} sec"
+            )
+
+            # =================================================
+            # WHISPER TRANSCRIPTION
+            # =================================================
+
+            result = model.transcribe(
+                whisper_audio_path,
+                language="en",
+                fp16=False
+            )
+
+            if not result:
+
+                raise RuntimeError(
+                    "Whisper returned no transcription result."
+                )
+
+            transcript_text = str(
+                result.get(
+                    "text",
+                    ""
+                )
+            ).strip()
+
+            if not transcript_text:
+
+                raise RuntimeError(
+                    "Whisper completed but returned "
+                    "an empty transcript."
+                )
 
             st.session_state[
                 "transcript_result"
@@ -803,7 +921,11 @@ if uploaded_file is not None:
 
             st.session_state[
                 "transcript"
-            ] = result["text"]
+            ] = transcript_text
+
+            st.session_state[
+                "whisper_audio_path"
+            ] = whisper_audio_path
 
             st.success(
                 "✅ Transcript generated!"
@@ -1777,7 +1899,7 @@ if "myanmar_recap" in st.session_state:
 
             st.success(
                 f"✅ {len(subtitle_data)} subtitles "
-                f"synced with the voice."
+                "synced with the voice."
             )
 
             st.info(
@@ -2122,6 +2244,7 @@ if freeze_enabled:
 
 st.divider()
 
+
 # =========================================================
 # FINAL VIDEO EXPORT
 # =========================================================
@@ -2460,7 +2583,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     )
 
 
-                    # No overlap
                     if global_end <= part_start:
 
                         continue
@@ -2469,10 +2591,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                         continue
 
-
-                    # ---------------------------------------------
-                    # CLIP TO CURRENT PART
-                    # ---------------------------------------------
 
                     clipped_start = max(
                         global_start,
@@ -2584,32 +2702,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 if has_source_video:
 
-                    # ---------------------------------------------
-                    # IMPORTANT:
-                    #
-                    # Freeze is performed INSIDE the existing
-                    # timeline.
-                    #
-                    # Example:
-                    #
-                    # 0-10 sec   = normal video
-                    # 10-12 sec  = freeze + zoom
-                    # 12-20 sec  = normal video
-                    #
-                    # So the output remains 20 sec,
-                    # NOT 22 sec.
-                    #
-                    # This prevents Voiceover / Subtitle drift.
-                    # ---------------------------------------------
-
                     cursor = (
                         source_part_start
                     )
 
-
-                    # ---------------------------------------------
-                    # FIRST GLOBAL FREEZE POINT
-                    # ---------------------------------------------
 
                     if freeze_enabled:
 
@@ -2645,10 +2741,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     piece_index = 0
 
 
-                    # =================================================
-                    # NORMAL + FREEZE SEGMENTS
-                    # =================================================
-
                     while (
                         cursor
                         <
@@ -2656,10 +2748,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         -
                         0.0001
                     ):
-
-                        # ---------------------------------------------
-                        # NO MORE FREEZE POINT
-                        # ---------------------------------------------
 
                         if (
                             not freeze_enabled
@@ -2720,10 +2808,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             break
 
 
-                        # ---------------------------------------------
-                        # NORMAL PART BEFORE FREEZE
-                        # ---------------------------------------------
-
                         normal_start = (
                             cursor
                         )
@@ -2770,10 +2854,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             piece_index += 1
 
 
-                        # ---------------------------------------------
-                        # FREEZE START
-                        # ---------------------------------------------
-
                         freeze_start = (
                             next_freeze
                         )
@@ -2805,8 +2885,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             )
 
 
-                            # Use the frame immediately before
-                            # the freeze point.
                             frame_time = max(
                                 0.0,
                                 freeze_start
@@ -2858,12 +2936,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             piece_index += 1
 
 
-                        # ---------------------------------------------
-                        # SKIP THE SOURCE FRAMES occupied by freeze.
-                        #
-                        # The freeze replaces this timeline section.
-                        # ---------------------------------------------
-
                         cursor = (
                             freeze_end
                         )
@@ -2873,10 +2945,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             interval
                         )
 
-
-                    # =================================================
-                    # CONCAT VIDEO SEGMENTS
-                    # =================================================
 
                     if video_labels:
 
@@ -2908,9 +2976,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 # =================================================
                 # NO SOURCE VIDEO
-                #
-                # Voiceover is longer than source video.
-                # Hold the final frame.
                 # =================================================
 
                 else:
@@ -2999,9 +3064,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 # =================================================
                 # VOICEOVER FOR THIS PART
-                #
-                # IMPORTANT:
-                # Audio follows FINAL TIMELINE exactly.
                 # =================================================
 
                 voice_start = min(
@@ -3215,11 +3277,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     part_files[0]
                 )
 
-                # ---------------------------------------------
-                # Copy final single-part output to standard
-                # filename.
-                # ---------------------------------------------
-
                 final_output = os.path.join(
                     tempfile.gettempdir(),
                     "final_movie_recap.mp4"
@@ -3384,7 +3441,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 st.success(
                     f"🔗 {len(part_files)} parts "
-                    f"combined successfully."
+                    "combined successfully."
                 )
 
 
