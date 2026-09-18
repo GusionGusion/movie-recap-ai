@@ -172,90 +172,112 @@ def split_myanmar_text(
 
 def wrap_myanmar(
     text,
-    max_chars=28
+    max_chars=14
 ):
     """
-    Myanmar subtitle:
-    - Maximum 2 lines
+    Myanmar subtitle wrapping.
+
+    Rules:
     - Short text = 1 line
-    - Long text = 2 lines
-    - Never more than 2 lines
+    - Long text = maximum 2 lines
+    - Never intentionally create 3 or 4 lines
+    - Designed for large subtitle font sizes
     """
 
-    words = str(text).split()
+    text = str(text).strip()
 
-    if not words:
+    text = re.sub(
+        r"\s+",
+        " ",
+        text
+    )
+
+    if not text:
         return ""
 
     # -----------------------------------------------------
     # Short subtitle → one line
     # -----------------------------------------------------
 
-    if len(str(text)) <= max_chars:
+    if len(text) <= max_chars:
 
-        return str(text).strip()
+        return text
 
 
     # -----------------------------------------------------
-    # Long subtitle → maximum 2 balanced lines
+    # Try word-based balanced 2-line split
     # -----------------------------------------------------
 
-    total_length = len(str(text))
+    words = text.split()
 
-    target = max(
-        1,
-        total_length // 2
-    )
+    if len(words) <= 1:
+
+        # Myanmar text may sometimes have no spaces.
+        # Split the characters into exactly two parts.
+        midpoint = max(
+            1,
+            len(text) // 2
+        )
+
+        return (
+            text[:midpoint]
+            + "\\N"
+            + text[midpoint:]
+        )
+
+
+    total_length = len(text)
+
+    target = total_length / 2
 
     best_split = None
+
     best_difference = None
 
-    current_words = []
 
-    for word in words:
+    for split_index in range(
+        1,
+        len(words)
+    ):
 
-        current_words.append(
-            word
-        )
+        line1 = " ".join(
+            words[:split_index]
+        ).strip()
 
-        left = " ".join(
-            current_words
-        )
+        line2 = " ".join(
+            words[split_index:]
+        ).strip()
 
-        right = " ".join(
-            words[len(current_words):]
-        )
+        if not line1 or not line2:
 
-        if not right:
-            break
+            continue
 
         difference = abs(
-            len(left) - len(right)
+            len(line1) - len(line2)
         )
 
-        if best_difference is None:
+        if (
+            best_difference is None
+            or difference < best_difference
+        ):
 
             best_difference = difference
-            best_split = len(
-                current_words
-            )
 
-        elif difference < best_difference:
-
-            best_difference = difference
-            best_split = len(
-                current_words
-            )
-
-        # Prefer a split near the middle.
-        if len(left) >= target:
-
-            break
+            best_split = split_index
 
 
     if best_split is None:
 
-        return str(text).strip()
+        midpoint = max(
+            1,
+            len(text) // 2
+        )
+
+        return (
+            text[:midpoint]
+            + "\\N"
+            + text[midpoint:]
+        )
 
 
     line1 = " ".join(
@@ -620,7 +642,6 @@ subtitle_font_size = st.number_input(
 st.caption(
     "Default: 50px • Subtitle maximum: 2 lines"
 )
-
 
 st.caption(
     "⚙️ Set your preferred settings first, "
@@ -1184,6 +1205,9 @@ Rules:
 - Do not add English.
 - Write only the Myanmar narration.
 - Make it natural for voiceover.
+- Keep approximately the same amount of information as the English recap.
+- Do not unnecessarily expand the narration.
+- Do not add extra sentences just to make the translation longer.
 
 English Recap:
 
@@ -2184,10 +2208,29 @@ if (
             # ASS SUBTITLES
             # =================================================
 
-            # Manual font size
-            # Default = 50
             font_size = int(
                 subtitle_font_size
+            )
+
+
+            # -------------------------------------------------
+            # Keep physical subtitle width reasonable when
+            # using large font sizes.
+            #
+            # 28px → around 24 chars
+            # 50px → around 14 chars
+            # -------------------------------------------------
+
+            subtitle_wrap_chars = max(
+                10,
+                int(
+                    24
+                    * 28
+                    / max(
+                        font_size,
+                        1
+                    )
+                )
             )
 
 
@@ -2196,10 +2239,11 @@ ScriptType: v4.00+
 PlayResX: 576
 PlayResY: 1024
 ScaledBorderAndShadow: yes
+WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Myanmar,Noto Sans Myanmar,{font_size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H99000000,0,0,0,0,100,100,0,0,1,2,0,2,40,40,55,1
+Style: Myanmar,Noto Sans Myanmar,{font_size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H99000000,0,0,0,0,100,95,0,0,1,2,0,2,40,40,55,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -2224,11 +2268,20 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     )
                 )
 
-                # Maximum 2 lines
+
+                # -------------------------------------------------
+                # FORCE MAXIMUM 2 LINES
+                # -------------------------------------------------
+
                 text = wrap_myanmar(
                     item["text"],
-                    28
+                    subtitle_wrap_chars
                 )
+
+
+                # -------------------------------------------------
+                # ASS special-character escaping
+                # -------------------------------------------------
 
                 text = text.replace(
                     "{",
@@ -2239,6 +2292,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     "}",
                     "\\}"
                 )
+
+
+                # -------------------------------------------------
+                # \q2 prevents ASS from creating extra automatic
+                # lines. Manual \N is used for the second line.
+                # -------------------------------------------------
+
+                text = (
+                    "{\\q2}"
+                    + text
+                )
+
 
                 ass_content += (
                     f"Dialogue: 0,"
@@ -2443,10 +2508,36 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             )
 
 
+            # -------------------------------------------------
+            # Target duration:
+            #
+            # If voice is longer:
+            #     extend final video frame.
+            #
+            # If voice is shorter:
+            #     keep full video duration and pad audio.
+            #
+            # This prevents 1.2x voice speed from causing the
+            # final video to be cut too early.
+            # -------------------------------------------------
+
+            target_duration = max(
+                base_video_duration,
+                voice_duration
+            )
+
+
             extra_duration = max(
                 0.0,
                 voice_duration
                 - base_video_duration
+            )
+
+
+            audio_pad_duration = max(
+                0.0,
+                base_video_duration
+                - voice_duration
             )
 
 
@@ -2460,6 +2551,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 f"➕ Extra Hold Duration: "
                 f"{extra_duration:.2f} sec"
             )
+
+
+            if audio_pad_duration > 0:
+
+                st.write(
+                    f"🔇 Audio End Padding: "
+                    f"{audio_pad_duration:.2f} sec"
+                )
 
 
             # =================================================
@@ -2487,6 +2586,31 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 final_video_label = (
                     "[vout]"
+                )
+
+
+            # =================================================
+            # AUDIO PADDING
+            # =================================================
+
+            if audio_pad_duration > 0:
+
+                filter_parts.append(
+                    "[1:a:0]"
+                    f"apad="
+                    f"pad_dur="
+                    f"{audio_pad_duration:.3f}"
+                    "[aout]"
+                )
+
+                final_audio_label = (
+                    "[aout]"
+                )
+
+            else:
+
+                final_audio_label = (
+                    "1:a:0"
                 )
 
 
@@ -2521,7 +2645,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 "-map",
                 final_video_label,
                 "-map",
-                "1:a:0",
+                final_audio_label,
                 "-c:v",
                 "libx264",
                 "-preset",
@@ -2535,7 +2659,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 "-b:a",
                 "128k",
                 "-t",
-                f"{voice_duration:.3f}",
+                f"{target_duration:.3f}",
                 output_video
             ]
 
@@ -2594,7 +2718,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 duration_difference = (
                     final_duration
-                    - voice_duration
+                    - target_duration
                 )
 
 
