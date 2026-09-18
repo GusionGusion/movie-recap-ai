@@ -33,6 +33,7 @@ def get_audio_duration(media_file):
     """Read exact media duration using ffprobe."""
 
     try:
+
         result = subprocess.run(
             [
                 "ffprobe",
@@ -57,6 +58,7 @@ def get_audio_duration(media_file):
         return float(value)
 
     except Exception:
+
         return 0.0
 
 
@@ -212,8 +214,6 @@ def wrap_myanmar(
 
     if len(words) <= 1:
 
-        # Myanmar text may sometimes have no spaces.
-        # Split the characters into exactly two parts.
         midpoint = max(
             1,
             len(text) // 2
@@ -630,6 +630,93 @@ st.subheader(
     "🔤 Subtitle Font Settings"
 )
 
+
+# ---------------------------------------------------------
+# Myanmar Font Options
+# ---------------------------------------------------------
+
+FONT_OPTIONS = {
+    "Noto Sans Myanmar": {
+        "font_name": "Noto Sans Myanmar",
+        "file_name": "NotoSansMyanmar-Regular.ttf"
+    },
+
+    "Noto Serif Myanmar": {
+        "font_name": "Noto Serif Myanmar",
+        "file_name": "NotoSerifMyanmar-Regular.ttf"
+    },
+
+    "Padauk": {
+        "font_name": "Padauk",
+        "file_name": "Padauk-Regular.ttf"
+    }
+}
+
+
+subtitle_font = st.selectbox(
+    "🔤 Subtitle Font",
+    list(FONT_OPTIONS.keys()),
+    index=0,
+    help=(
+        "Choose a Myanmar Unicode font for the final subtitle."
+    ),
+    key="main_subtitle_font"
+)
+
+
+selected_font_info = FONT_OPTIONS[
+    subtitle_font
+]
+
+
+selected_font_name = selected_font_info[
+    "font_name"
+]
+
+
+# ---------------------------------------------------------
+# Font Folder
+# ---------------------------------------------------------
+
+fonts_dir = os.path.join(
+    os.path.dirname(
+        os.path.abspath(__file__)
+    ),
+    "fonts"
+)
+
+
+selected_font_file = os.path.join(
+    fonts_dir,
+    selected_font_info["file_name"]
+)
+
+
+# ---------------------------------------------------------
+# Check Selected Font
+# ---------------------------------------------------------
+
+if os.path.isfile(
+    selected_font_file
+):
+
+    st.success(
+        f"✅ Font ready: {subtitle_font}"
+    )
+
+else:
+
+    st.warning(
+        f"⚠️ {subtitle_font} font file was not found. "
+        f"Please add {selected_font_info['file_name']} "
+        f"inside the fonts/ folder."
+    )
+
+
+# ---------------------------------------------------------
+# Font Size
+# ---------------------------------------------------------
+
 subtitle_font_size = st.number_input(
     "📏 Subtitle Font Size (Manual)",
     min_value=20,
@@ -637,6 +724,19 @@ subtitle_font_size = st.number_input(
     value=50,
     step=1,
     help="Default subtitle font size is 50px."
+)
+
+
+# ---------------------------------------------------------
+# Fixed Yellow Subtitle
+# ---------------------------------------------------------
+
+st.caption(
+    "🟡 Subtitle Color: Yellow"
+)
+
+st.caption(
+    "⬛ Subtitle Outline: Black"
 )
 
 st.caption(
@@ -2234,6 +2334,21 @@ if (
             )
 
 
+            # =================================================
+            # YELLOW SUBTITLE + SELECTED MYANMAR FONT
+            # =================================================
+            #
+            # ASS color format:
+            # &HAABBGGRR
+            #
+            # Yellow RGB = FF FF 00
+            # Therefore:
+            # &H0000FFFF
+            #
+            # Outline = Black
+            # &H00000000
+            # =================================================
+
             ass_content = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 576
@@ -2243,7 +2358,7 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Myanmar,Noto Sans Myanmar,{font_size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H99000000,0,0,0,0,100,95,0,0,1,2,0,2,40,40,55,1
+Style: Myanmar,{selected_font_name},{font_size},&H0000FFFF,&H0000FFFF,&H00000000,&H99000000,0,0,0,0,100,95,0,0,1,2,0,2,40,40,55,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -2474,11 +2589,42 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             # =================================================
             # SUBTITLE OVERLAY
             # =================================================
+            #
+            # fontsdir points FFmpeg/libass to:
+            #
+            # movie-recap-ai/fonts/
+            #
+            # This allows the selected .ttf file to be used
+            # without installing it into the operating system.
+            # =================================================
+
+            # -------------------------------------------------
+            # FFmpeg filter path escaping
+            # -------------------------------------------------
+
+            ass_filter_file = (
+                ass_file
+                .replace("\\", "/")
+                .replace("'", "\\'")
+            )
+
+            ass_fonts_dir = (
+                fonts_dir
+                .replace("\\", "/")
+                .replace("'", "\\'")
+            )
+
+
+            subtitle_filter = (
+                "[basevideo]"
+                f"ass=filename='{ass_filter_file}'"
+                f":fontsdir='{ass_fonts_dir}'"
+                "[vout]"
+            )
+
 
             filter_parts.append(
-                "[basevideo]"
-                f"ass={ass_file}"
-                "[vout]"
+                subtitle_filter
             )
 
 
@@ -2713,6 +2859,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 st.info(
                     f"🎙️ Voiceover Duration: "
                     f"{voice_duration:.2f} sec"
+                )
+
+
+                st.info(
+                    f"🔤 Subtitle Font: "
+                    f"{subtitle_font}"
+                )
+
+
+                st.info(
+                    "🟡 Subtitle Color: Yellow"
                 )
 
 
