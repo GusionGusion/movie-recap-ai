@@ -1257,9 +1257,9 @@ if "myanmar_recap" in st.session_state:
             # =================================================
 
             chunks = split_myanmar_text(
-                text,
-                max_chars=65
-            )
+    text,
+    max_chars=100
+)
 
 
             if not chunks:
@@ -1369,7 +1369,7 @@ if "myanmar_recap" in st.session_state:
             # TTS chunks overlap slightly so the natural
             # end/start silence is blended instead of doubled.
 
-            TTS_CROSSFADE = 0.12
+            TTS_CROSSFADE = 0.06
 
 
             normalized_files = []
