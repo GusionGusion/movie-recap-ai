@@ -1117,6 +1117,7 @@ Rules:
                                 "❌ Gemini returned no scene analysis."
                             )
 
+
             except Exception as e:
 
                 st.error(
@@ -1777,7 +1778,7 @@ if "myanmar_recap" in st.session_state:
 
             st.success(
                 f"✅ {len(subtitle_data)} subtitles "
-                f"synced with the voice."
+                "synced with the voice."
             )
 
             st.info(
@@ -2142,7 +2143,7 @@ if (
 
     st.caption(
         "✂️ Videos longer than 1 minute are automatically "
-        "processed in 60-second timeline parts."
+        "processed in 60-second source parts."
     )
 
     split_mode = st.checkbox(
@@ -2157,8 +2158,8 @@ if (
 
         st.info(
             "✂️ Split Mode ON — "
-            "Video, Voiceover and Subtitle timing "
-            "are handled part-by-part."
+            "Each 60-second source part is rendered "
+            "with a continuous global output timeline."
         )
 
     else:
@@ -2284,11 +2285,7 @@ if (
 
 
             # =================================================
-            # PART COUNT
-            #
-            # IMPORTANT:
-            # Split is based on SOURCE TIMELINE.
-            # Gemini / Whisper / TTS are NOT repeated.
+            # SOURCE PART COUNT
             # =================================================
 
             if (
@@ -2310,16 +2307,157 @@ if (
 
 
             st.write(
-                f"✂️ Export Parts: "
+                f"✂️ Source Export Parts: "
                 f"{part_count}"
             )
+
+
+            # =================================================
+            # GLOBAL FREEZE POINTS
+            #
+            # Freeze points are calculated from the original
+            # source timeline, NOT reset for every part.
+            #
+            # Example:
+            #
+            # Source:
+            # 0-10 normal
+            # 10 freeze
+            # 10-20 normal
+            # 20 freeze
+            #
+            # For a long video:
+            # 60 seconds is also a real global freeze point.
+            # =================================================
+
+            freeze_points = []
+
+            if freeze_enabled and freeze_time > 0:
+
+                current_freeze = interval
+
+                while (
+                    current_freeze < video_duration
+                    or math.isclose(
+                        current_freeze,
+                        video_duration,
+                        abs_tol=0.001
+                    )
+                ):
+
+                    if current_freeze >= video_duration:
+
+                        break
+
+                    freeze_points.append(
+                        float(
+                            current_freeze
+                        )
+                    )
+
+                    current_freeze += interval
+
+
+            # =================================================
+            # HELPER:
+            # COUNT FREEZE POINTS BEFORE A SOURCE TIME
+            # =================================================
+
+            def count_freezes_before(
+                timestamp
+            ):
+
+                return sum(
+                    1
+                    for point in freeze_points
+                    if point < timestamp
+                )
+
+
+            # =================================================
+            # HELPER:
+            # OUTPUT TIMELINE POSITION
+            #
+            # A source timestamp after N freeze points is shifted
+            # by N × freeze duration.
+            # =================================================
+
+            def source_to_output(
+                timestamp
+            ):
+
+                timestamp = max(
+                    0.0,
+                    float(timestamp)
+                )
+
+                return (
+                    timestamp
+                    +
+                    (
+                        count_freezes_before(
+                            timestamp
+                        )
+                        * freeze_time
+                    )
+                )
+
+
+            # =================================================
+            # HELPER:
+            # OUTPUT TIMELINE START OF A SOURCE PART
+            # =================================================
+
+            def output_part_start(
+                source_start
+            ):
+
+                return source_to_output(
+                    source_start
+                )
+
+
+            # =================================================
+            # HELPER:
+            # OUTPUT TIMELINE END OF A SOURCE PART
+            #
+            # If the part ends exactly on a freeze point,
+            # the freeze belongs to the end of this part.
+            # =================================================
+
+            def output_part_end(
+                source_end
+            ):
+
+                base = source_to_output(
+                    source_end
+                )
+
+                if (
+                    freeze_enabled
+                    and
+                    freeze_time > 0
+                    and
+                    any(
+                        math.isclose(
+                            point,
+                            source_end,
+                            abs_tol=0.001
+                        )
+                        for point in freeze_points
+                    )
+                ):
+
+                    base += freeze_time
+
+                return base
 
 
             part_files = []
 
 
             # =================================================
-            # CREATE EACH PART
+            # CREATE EACH SOURCE PART
             # =================================================
 
             for part_index in range(
@@ -2327,7 +2465,7 @@ if (
             ):
 
                 # ---------------------------------------------
-                # SOURCE TIMELINE
+                # SOURCE PART RANGE
                 # ---------------------------------------------
 
                 if part_count > 1:
@@ -2356,21 +2494,47 @@ if (
                 )
 
 
+                # ---------------------------------------------
+                # OUTPUT TIMELINE RANGE
+                # ---------------------------------------------
+
+                part_output_start = (
+                    output_part_start(
+                        part_start
+                    )
+                )
+
+                part_output_end = (
+                    output_part_end(
+                        part_end
+                    )
+                )
+
+
+                video_output_duration = max(
+                    0.0,
+                    part_output_end
+                    - part_output_start
+                )
+
+
                 st.info(
                     f"⏳ Part "
                     f"{part_index + 1}/{part_count} "
                     f"• Source "
                     f"{part_start:.2f}s → "
-                    f"{part_end:.2f}s"
+                    f"{part_end:.2f}s "
+                    f"• Output "
+                    f"{part_output_start:.2f}s → "
+                    f"{part_output_end:.2f}s"
                 )
 
 
                 # =================================================
                 # LOCAL SUBTITLE ASS
                 #
-                # IMPORTANT:
-                # Global subtitle time is converted to local
-                # part time.
+                # Subtitle timing follows the GLOBAL OUTPUT
+                # timeline, not source timeline.
                 # =================================================
 
                 ass_content = f"""[Script Info]
@@ -2409,41 +2573,37 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
                     # ---------------------------------------------
-                    # Subtitle does not overlap this source part
+                    # Subtitle does not overlap this OUTPUT part
                     # ---------------------------------------------
 
-                    if global_end <= part_start:
+                    if global_end <= part_output_start:
 
                         continue
 
-                    if global_start >= part_end:
+                    if global_start >= part_output_end:
 
                         continue
 
-
-                    # ---------------------------------------------
-                    # Clip subtitle to source part
-                    # ---------------------------------------------
 
                     clipped_start = max(
                         global_start,
-                        part_start
+                        part_output_start
                     )
 
                     clipped_end = min(
                         global_end,
-                        part_end
+                        part_output_end
                     )
 
 
                     local_start = (
                         clipped_start
-                        - part_start
+                        - part_output_start
                     )
 
                     local_end = (
                         clipped_end
-                        - part_start
+                        - part_output_start
                     )
 
 
@@ -2521,11 +2681,15 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 # =================================================
                 # VIDEO FILTER
                 #
-                # IMPORTANT:
-                # NO -ss + ABSOLUTE trim mismatch.
+                # Build global source pieces:
                 #
-                # We feed the full source video and trim using
-                # absolute timestamps.
+                # NORMAL
+                # FREEZE
+                # NORMAL
+                # FREEZE
+                #
+                # Then only render pieces belonging to this
+                # 60-second SOURCE part.
                 # =================================================
 
                 filter_parts = []
@@ -2534,177 +2698,259 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
                 # =================================================
-                # FREEZE + ZOOM
+                # BUILD SOURCE SEGMENTS
                 # =================================================
 
-                if freeze_enabled:
+                source_boundaries = [
+                    part_start
+                ]
 
-                    local_segment_count = int(
-                        math.ceil(
-                            source_part_duration
-                            / interval
-                        )
-                    )
+                for point in freeze_points:
 
-                    for local_index in range(
-                        local_segment_count
+                    if (
+                        point > part_start
+                        and
+                        point < part_end
                     ):
 
-                        local_start = (
-                            local_index
-                            * interval
+                        source_boundaries.append(
+                            point
                         )
 
-                        local_end = min(
-                            (
-                                local_index
-                                + 1
+                if (
+                    part_end
+                    not in source_boundaries
+                ):
+
+                    source_boundaries.append(
+                        part_end
+                    )
+
+
+                source_boundaries = sorted(
+                    set(
+                        source_boundaries
+                    )
+                )
+
+
+                segment_number = 0
+
+
+                for boundary_index in range(
+                    len(source_boundaries) - 1
+                ):
+
+                    normal_start = (
+                        source_boundaries[
+                            boundary_index
+                        ]
+                    )
+
+                    normal_end = (
+                        source_boundaries[
+                            boundary_index + 1
+                        ]
+                    )
+
+
+                    if normal_end <= normal_start:
+
+                        continue
+
+
+                    # ---------------------------------------------
+                    # NORMAL VIDEO
+                    #
+                    # IMPORTANT:
+                    # Use LOCAL source timestamps for this part.
+                    # ---------------------------------------------
+
+                    normal_label = (
+                        f"normal_{part_index}_{segment_number}"
+                    )
+
+
+                    local_normal_start = (
+                        normal_start
+                        - part_start
+                    )
+
+                    local_normal_end = (
+                        normal_end
+                        - part_start
+                    )
+
+
+                    normal_filter = (
+                        f"[0:v]"
+                        f"trim="
+                        f"start={local_normal_start:.6f}:"
+                        f"end={local_normal_end:.6f},"
+                        f"setpts=PTS-STARTPTS,"
+                        f"scale=576:1024,"
+                        f"setsar=1"
+                        f"[{normal_label}]"
+                    )
+
+
+                    filter_parts.append(
+                        normal_filter
+                    )
+
+
+                    video_labels.append(
+                        f"[{normal_label}]"
+                    )
+
+
+                    # ---------------------------------------------
+                    # FREEZE AFTER THIS NORMAL SEGMENT
+                    #
+                    # Only add freeze when normal_end is a global
+                    # freeze point.
+                    # ---------------------------------------------
+
+                    is_freeze_point = any(
+                        math.isclose(
+                            point,
+                            normal_end,
+                            abs_tol=0.001
+                        )
+                        for point in freeze_points
+                    )
+
+
+                    if (
+                        is_freeze_point
+                        and
+                        freeze_time > 0
+                    ):
+
+                        freeze_label = (
+                            f"freeze_{part_index}_{segment_number}"
+                        )
+
+
+                        frame_time = max(
+                            normal_start,
+                            normal_end - 0.10
+                        )
+
+
+                        local_frame_time = (
+                            frame_time
+                            - part_start
+                        )
+
+
+                        freeze_frames = max(
+                            1,
+                            int(
+                                math.ceil(
+                                    freeze_time
+                                    * 30
+                                )
                             )
-                            * interval,
-                            source_part_duration
                         )
 
 
-                        if local_end <= local_start:
-
-                            continue
-
-
-                        absolute_start = (
-                            part_start
-                            + local_start
-                        )
-
-                        absolute_end = (
-                            part_start
-                            + local_end
-                        )
-
-
-                        # -----------------------------------------
-                        # Normal video segment
-                        # -----------------------------------------
-
-                        normal_label = (
-                            f"normal_{part_index}_{local_index}"
-                        )
-
-
-                        normal_filter = (
+                        freeze_filter = (
                             f"[0:v]"
                             f"trim="
-                            f"start={absolute_start:.6f}:"
-                            f"end={absolute_end:.6f},"
+                            f"start={local_frame_time:.6f}:"
+                            f"end={local_frame_time + 0.0334:.6f},"
                             f"setpts=PTS-STARTPTS,"
+                            f"select='eq(n,0)',"
                             f"scale=576:1024,"
-                            f"setsar=1"
-                            f"[{normal_label}]"
+                            f"setsar=1,"
+                            f"zoompan="
+                            f"z='if(lte(on,29),"
+                            f"1+0.15*on/29,"
+                            f"1.15-0.15*(on-29)/29)':"
+                            f"d={freeze_frames}:"
+                            f"x='iw/2-(iw/zoom/2)':"
+                            f"y='ih/2-(ih/zoom/2)':"
+                            f"s=576x1024:"
+                            f"fps=30"
+                            f"[{freeze_label}]"
                         )
 
 
                         filter_parts.append(
-                            normal_filter
+                            freeze_filter
                         )
 
 
                         video_labels.append(
-                            f"[{normal_label}]"
+                            f"[{freeze_label}]"
                         )
 
 
-                        # -----------------------------------------
-                        # Freeze + Zoom
-                        # -----------------------------------------
-
-                        if (
-                            local_end
-                            <
-                            source_part_duration
-                        ):
-
-                            freeze_label = (
-                                f"freeze_{part_index}_{local_index}"
-                            )
+                    segment_number += 1
 
 
-                            frame_time = max(
-                                absolute_start,
-                                absolute_end - 0.10
-                            )
+                # =================================================
+                # IF FREEZE IS OFF
+                # =================================================
+
+                if not freeze_enabled:
+
+                    video_labels = []
+
+                    filter_parts = []
+
+                    filter_parts.append(
+                        "[0:v]"
+                        "setpts=PTS-STARTPTS,"
+                        "scale=576:1024,"
+                        "setsar=1,"
+                        "format=yuv420p"
+                        "[basevideo]"
+                    )
+
+                    video_labels.append(
+                        "[basevideo]"
+                    )
 
 
-                            freeze_filter = (
-                                f"[0:v]"
-                                f"trim="
-                                f"start={frame_time:.6f}:"
-                                f"end={frame_time + 0.0334:.6f},"
-                                f"setpts=PTS-STARTPTS,"
-                                f"select='eq(n,0)',"
-                                f"scale=576:1024,"
-                                f"setsar=1,"
-                                f"zoompan="
-                                f"z='if(lte(on,29),"
-                                f"1+0.15*on/29,"
-                                f"1.15-0.15*(on-29)/29)':"
-                                f"d=60:"
-                                f"x='iw/2-(iw/zoom/2)':"
-                                f"y='ih/2-(ih/zoom/2)':"
-                                f"s=576x1024:"
-                                f"fps=30"
-                                f"[{freeze_label}]"
-                            )
+                # =================================================
+                # CONCAT VIDEO PIECES
+                # =================================================
 
+                if len(video_labels) > 1:
 
-                            filter_parts.append(
-                                freeze_filter
-                            )
+                    concat_inputs = "".join(
+                        video_labels
+                    )
 
+                    concat_filter = (
+                        f"{concat_inputs}"
+                        f"concat="
+                        f"n={len(video_labels)}:"
+                        f"v=1:"
+                        f"a=0:"
+                        f"unsafe=1,"
+                        f"format=yuv420p"
+                        f"[basevideo]"
+                    )
 
-                            video_labels.append(
-                                f"[{freeze_label}]"
-                            )
+                    filter_parts.append(
+                        concat_filter
+                    )
 
+                elif len(video_labels) == 1:
 
-                    if video_labels:
-
-                        concat_inputs = "".join(
-                            video_labels
-                        )
-
-
-                        concat_filter = (
-                            f"{concat_inputs}"
-                            f"concat="
-                            f"n={len(video_labels)}:"
-                            f"v=1:"
-                            f"a=0:"
-                            f"unsafe=1,"
-                            f"format=yuv420p"
-                            f"[basevideo]"
-                        )
-
-
-                        filter_parts.append(
-                            concat_filter
-                        )
-
-                    else:
-
-                        filter_parts.append(
-                            "[0:v]"
-                            "scale=576:1024,"
-                            "setsar=1,"
-                            "format=yuv420p"
-                            "[basevideo]"
-                        )
+                    filter_parts.append(
+                        f"{video_labels[0]}"
+                        f"format=yuv420p"
+                        f"[basevideo]"
+                    )
 
                 else:
 
                     filter_parts.append(
                         "[0:v]"
-                        f"trim="
-                        f"start={part_start:.6f}:"
-                        f"end={part_end:.6f},"
                         "setpts=PTS-STARTPTS,"
                         "scale=576:1024,"
                         "setsar=1,"
@@ -2726,21 +2972,22 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
                 # =================================================
-                # VOICEOVER PART
+                # AUDIO OUTPUT TIMELINE
                 #
-                # Global voice timeline:
-                # Part 1 = 0 → 60
-                # Part 2 = 60 → 120
-                # Part 3 = 120 → ...
+                # IMPORTANT:
+                # Voiceover follows FINAL OUTPUT timeline.
+                #
+                # Part 2 does NOT simply start at source 60 sec
+                # when Freeze + Zoom has added time.
                 # =================================================
 
                 voice_start = min(
-                    part_start,
+                    part_output_start,
                     voice_duration
                 )
 
                 voice_end = min(
-                    part_end,
+                    part_output_end,
                     voice_duration
                 )
 
@@ -2753,33 +3000,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
                 # =================================================
-                # FREEZE VIDEO DURATION
-                # =================================================
-
-                if freeze_enabled:
-
-                    freeze_count = max(
-                        0,
-                        local_segment_count - 1
-                    )
-
-                else:
-
-                    freeze_count = 0
-
-
-                video_output_duration = (
-                    source_part_duration
-                    +
-                    (
-                        freeze_count
-                        * freeze_time
-                    )
-                )
-
-
-                # =================================================
-                # TARGET DURATION
+                # TARGET PART DURATION
                 # =================================================
 
                 part_target_duration = max(
@@ -2789,7 +3010,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
                 # =================================================
-                # EXTEND VIDEO IF VOICE IS LONGER
+                # EXTEND VIDEO IF VOICEOVER IS LONGER
                 # =================================================
 
                 video_extra_duration = max(
@@ -2807,7 +3028,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         f"stop_mode=clone:"
                         f"stop_duration="
                         f"{video_extra_duration:.3f},"
-                        f"start_mode=clone,"
                         f"setpts=PTS-STARTPTS"
                         "[vfinal]"
                     )
@@ -2829,24 +3049,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 if voice_part_duration > 0:
 
-                    audio_end = min(
-                        part_end,
-                        voice_duration
-                    )
-
-
                     audio_filter = (
                         f"[1:a:0]"
                         f"atrim="
                         f"start={voice_start:.6f}:"
-                        f"end={audio_end:.6f},"
+                        f"end={voice_end:.6f},"
                         f"asetpts=PTS-STARTPTS"
                     )
 
 
                     audio_pad_duration = max(
                         0.0,
-                        video_output_duration
+                        part_target_duration
                         - voice_part_duration
                     )
 
@@ -2872,7 +3086,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         "channel_layout=stereo:"
                         "sample_rate=48000,"
                         f"atrim="
-                        f"duration={video_output_duration:.3f}"
+                        f"duration={part_target_duration:.3f}"
                         "[aout]"
                     )
 
@@ -2905,15 +3119,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 # FFMPEG
                 #
                 # IMPORTANT:
-                # No -ss is used here.
+                # -ss is NOT used.
                 #
-                # This prevents the previous absolute-trim /
-                # seek mismatch.
+                # Video timestamps inside the filter are LOCAL
+                # to this source part.
                 # =================================================
 
                 command = [
                     "ffmpeg",
                     "-y",
+
+                    "-ss",
+                    f"{part_start:.6f}",
 
                     "-i",
                     original_video,
@@ -3014,6 +3231,24 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     f"completed • "
                     f"{actual_part_duration:.2f} sec"
                 )
+
+
+            # =====================================================
+            # FINAL VOICEOVER EXTENSION
+            #
+            # If the entire rendered video is shorter than the
+            # voiceover, the final part gets extended by tpad
+            # above.
+            # =====================================================
+
+            actual_video_timeline_duration = (
+                video_duration
+                +
+                (
+                    len(freeze_points)
+                    * freeze_time
+                )
+            )
 
 
             # =====================================================
@@ -3167,7 +3402,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 st.success(
                     f"🔗 {len(part_files)} parts "
-                    f"combined successfully."
+                    "combined successfully."
                 )
 
 
@@ -3203,6 +3438,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
             st.info(
+                f"🎥 Video Timeline After Freeze: "
+                f"{actual_video_timeline_duration:.2f} sec"
+            )
+
+
+            st.info(
                 f"🔤 Subtitle Font: "
                 f"{subtitle_font}"
             )
@@ -3227,8 +3468,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
             st.info(
                 "🔄 Split processing: "
-                "Video + Voiceover + Subtitle "
-                "are rendered part-by-part."
+                "60-second source parts with "
+                "continuous global video/audio/subtitle timing."
             )
 
 
