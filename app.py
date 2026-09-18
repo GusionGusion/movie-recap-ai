@@ -174,7 +174,13 @@ def wrap_myanmar(
     text,
     max_chars=24
 ):
-    """Wrap Myanmar subtitle into maximum 3 lines."""
+    """
+    Wrap Myanmar subtitle.
+
+    Short text  = 1 line
+    Long text   = maximum 2 lines
+    Never more than 2 lines.
+    """
 
     words = str(text).split()
 
@@ -213,9 +219,18 @@ def wrap_myanmar(
             current
         )
 
-    if len(lines) > 3:
+    # Maximum 2 lines only
+    if len(lines) > 2:
 
-        lines = lines[:3]
+        # Put remaining text into the second line
+        second_line = " ".join(
+            lines[1:]
+        )
+
+        lines = [
+            lines[0],
+            second_line
+        ]
 
     return "\\N".join(lines)
 
@@ -543,6 +558,25 @@ with settings_col2:
         step=0.5,
         key="main_freeze_duration"
     )
+
+
+# =========================================================
+# SUBTITLE FONT SIZE - MANUAL
+# =========================================================
+
+subtitle_font_size = st.number_input(
+    "📝 Subtitle Font Size (px)",
+    min_value=20,
+    max_value=100,
+    value=50,
+    step=1,
+    key="main_subtitle_font_size"
+)
+
+
+st.caption(
+    "📝 Subtitle: Short = 1 line • Long = maximum 2 lines"
+)
 
 
 st.caption(
@@ -1257,9 +1291,9 @@ if "myanmar_recap" in st.session_state:
             # =================================================
 
             chunks = split_myanmar_text(
-    text,
-    max_chars=100
-)
+                text,
+                max_chars=100
+            )
 
 
             if not chunks:
@@ -2168,7 +2202,7 @@ if (
             # ASS SUBTITLES
             # =================================================
 
-            ass_content = """[Script Info]
+            ass_content = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 576
 PlayResY: 1024
@@ -2176,7 +2210,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Myanmar,Noto Sans Myanmar,28,&H00FFFFFF,&H00FFFFFF,&H00000000,&H99000000,0,0,0,0,100,100,0,0,1,2,1,2,40,40,55,1
+Style: Myanmar,Noto Sans Myanmar,{int(subtitle_font_size)},&H00FFFFFF,&H00FFFFFF,&H00000000,&H99000000,0,0,0,0,100,100,0,0,1,2,1,2,40,40,55,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
