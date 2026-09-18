@@ -2358,7 +2358,7 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Myanmar,{selected_font_name},{font_size},&H0000FFFF,&H0000FFFF,&H00000000,&H99000000,0,0,0,0,100,95,0,0,1,2,0,2,40,40,55,1
+Style: Myanmar,{selected_font_name},{font_size},&H0000FFFF,&H0000FFFF,&H00000000,&H99000000,0,0,0,0,100,95,0,0,1,2,0,2,30,30,80,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
