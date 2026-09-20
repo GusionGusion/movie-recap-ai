@@ -72,7 +72,7 @@ def extract_audio_for_whisper(video_path):
         f"movie_recap_whisper_{os.getpid()}.wav"
     )
 
-    # Remove previous temporary audio if it exists.
+    # Remove previous file if it exists
     if os.path.exists(audio_file):
 
         try:
@@ -103,8 +103,7 @@ def extract_audio_for_whisper(video_path):
     if result.returncode != 0:
 
         raise RuntimeError(
-            "FFmpeg audio extraction failed:\n"
-            + result.stderr[-3000:]
+            result.stderr[-3000:]
         )
 
     if not os.path.exists(audio_file):
@@ -130,7 +129,7 @@ def extract_audio_for_whisper(video_path):
     if duration <= 0:
 
         raise RuntimeError(
-            "Extracted audio duration is 0 seconds."
+            "Extracted audio duration is invalid."
         )
 
     return audio_file
@@ -388,8 +387,10 @@ def load_whisper_model(
 
     import whisper
 
-    # Explicit CPU avoids accidental backend/device problems
-    # on Streamlit Cloud.
+    # IMPORTANT:
+    # Force CPU to avoid backend/device related
+    # tensor reshape problems on Streamlit Cloud.
+
     model = whisper.load_model(
         model_name,
         device="cpu"
@@ -682,8 +683,6 @@ if uploaded_file is not None:
             f"{whisper_model}..."
         )
 
-        whisper_audio = None
-
         try:
 
             # -------------------------------------------------
@@ -698,15 +697,13 @@ if uploaded_file is not None:
                 )
             )
 
-            audio_duration = (
-                get_audio_duration(
-                    whisper_audio
-                )
+            whisper_duration = get_audio_duration(
+                whisper_audio
             )
 
-            st.caption(
+            st.write(
                 f"🔊 Whisper Audio: "
-                f"{audio_duration:.2f} seconds"
+                f"{whisper_duration:.2f} seconds"
             )
 
             # -------------------------------------------------
@@ -716,12 +713,8 @@ if uploaded_file is not None:
             import whisper
             import numpy as np
 
-            model = load_whisper_model(
-                whisper_model
-            )
-
             # -------------------------------------------------
-            # LOAD AUDIO INTO MEMORY
+            # LOAD AUDIO INTO PYTHON
             # -------------------------------------------------
 
             audio = whisper.load_audio(
@@ -733,15 +726,31 @@ if uploaded_file is not None:
                 dtype=np.float32
             )
 
+            st.write(
+                f"🎧 Audio Samples: "
+                f"{audio.size:,}"
+            )
+
             if audio.size == 0:
 
                 raise RuntimeError(
-                    "Whisper received an empty audio waveform."
+                    "Whisper audio waveform is empty."
                 )
 
-            st.caption(
-                f"🎧 Audio Samples: "
-                f"{audio.size:,}"
+            # -------------------------------------------------
+            # VERIFY AUDIO SHAPE BEFORE TRANSCRIBE
+            # -------------------------------------------------
+
+            if audio.ndim != 1:
+
+                audio = audio.reshape(-1)
+
+            # -------------------------------------------------
+            # LOAD CPU WHISPER MODEL
+            # -------------------------------------------------
+
+            model = load_whisper_model(
+                whisper_model
             )
 
             # -------------------------------------------------
@@ -767,7 +776,15 @@ if uploaded_file is not None:
             ] = result.get(
                 "text",
                 ""
-            ).strip()
+            )
+
+            if not st.session_state[
+                "transcript"
+            ].strip():
+
+                raise RuntimeError(
+                    "Whisper completed but returned an empty transcript."
+                )
 
             st.success(
                 "✅ Transcript generated!"
@@ -778,29 +795,6 @@ if uploaded_file is not None:
             st.error(
                 f"❌ Transcription failed: {e}"
             )
-
-            # Extra diagnostic information.
-            try:
-
-                import whisper
-                import torch
-
-                st.code(
-                    (
-                        f"Whisper package: "
-                        f"{getattr(whisper, '__version__', 'unknown')}\n"
-                        f"Whisper path: "
-                        f"{getattr(whisper, '__file__', 'unknown')}\n"
-                        f"PyTorch: "
-                        f"{torch.__version__}\n"
-                        f"Whisper audio: "
-                        f"{whisper_audio}\n"
-                    ),
-                    language="text"
-                )
-
-            except Exception:
-                pass
 
 
 if "transcript" in st.session_state:
@@ -881,13 +875,6 @@ if "transcript_result" in st.session_state:
                 else:
 
                     scene_items = []
-
-                    # One actual video frame for each
-                    # timestamped Whisper segment.
-                    #
-                    # Limit to 24 frames to keep Gemini request
-                    # reasonable. If there are more segments,
-                    # sample them chronologically.
 
                     usable_segments = [
                         seg
@@ -1000,10 +987,6 @@ if "transcript_result" in st.session_state:
                         )
 
                     else:
-
-                        # -------------------------------------------------
-                        # ONE DIRECT GEMINI SCENE ANALYSIS
-                        # -------------------------------------------------
 
                         prompt = """
 You are analyzing an actual movie/video.
@@ -1332,10 +1315,6 @@ st.subheader(
 
 if "myanmar_recap" in st.session_state:
 
-    # =====================================================
-    # SELECT VOICE
-    # =====================================================
-
     if voice_gender.startswith("👩"):
 
         selected_voice = (
@@ -1347,10 +1326,6 @@ if "myanmar_recap" in st.session_state:
         selected_voice = (
             "my-MM-ThihaNeural"
         )
-
-    # =====================================================
-    # EDGE-TTS RATE
-    # =====================================================
 
     if float(voice_speed) == 1.0:
 
@@ -1369,10 +1344,6 @@ if "myanmar_recap" in st.session_state:
         "Natural TTS crossfade • "
         "Actual TTS duration used for subtitle timing"
     )
-
-    # =====================================================
-    # GENERATE VOICEOVER
-    # =====================================================
 
     if st.button(
         "🎙️ Generate Myanmar Voiceover"
@@ -1396,10 +1367,6 @@ if "myanmar_recap" in st.session_state:
 
                 st.stop()
 
-            # =================================================
-            # Split narration
-            # =================================================
-
             chunks = split_myanmar_text(
                 text,
                 max_chars=100
@@ -1418,10 +1385,6 @@ if "myanmar_recap" in st.session_state:
                 f"{len(chunks)} voice segments."
             )
 
-            # =================================================
-            # WORKING DIRECTORY
-            # =================================================
-
             work_dir = tempfile.mkdtemp(
                 prefix="movie_recap_voice_"
             )
@@ -1433,10 +1396,6 @@ if "myanmar_recap" in st.session_state:
             progress = st.progress(
                 0
             )
-
-            # =================================================
-            # TTS GENERATION
-            # =================================================
 
             async def create_all_tts():
 
@@ -1473,10 +1432,6 @@ if "myanmar_recap" in st.session_state:
                 create_all_tts()
             )
 
-            # =================================================
-            # MEASURE DURATIONS
-            # =================================================
-
             for index, raw_file in enumerate(
                 raw_files
             ):
@@ -1493,10 +1448,6 @@ if "myanmar_recap" in st.session_state:
                     (index + 1)
                     / len(raw_files)
                 )
-
-            # =================================================
-            # NATURAL CROSSFADE
-            # =================================================
 
             TTS_CROSSFADE = 0.06
 
@@ -1540,10 +1491,6 @@ if "myanmar_recap" in st.session_state:
                     normalized_file
                 )
 
-            # =================================================
-            # COMBINE WITH ACROSSFADE
-            # =================================================
-
             combined_audio = os.path.join(
                 work_dir,
                 "combined.wav"
@@ -1578,7 +1525,9 @@ if "myanmar_recap" in st.session_state:
                     len(normalized_files)
                 ):
 
-                    output_label = f"[a{i}]"
+                    output_label = (
+                        f"[a{i}]"
+                    )
 
                     filter_parts.append(
                         (
@@ -1592,7 +1541,9 @@ if "myanmar_recap" in st.session_state:
                         )
                     )
 
-                    previous_label = output_label
+                    previous_label = (
+                        output_label
+                    )
 
                 filter_complex = ";".join(
                     filter_parts
@@ -1631,10 +1582,6 @@ if "myanmar_recap" in st.session_state:
                         combine_result.stderr[-3000:]
                     )
 
-            # =================================================
-            # FINAL MP3
-            # =================================================
-
             final_voice_file = os.path.join(
                 work_dir,
                 "myanmar_voiceover.mp3"
@@ -1662,17 +1609,9 @@ if "myanmar_recap" in st.session_state:
                     convert_result.stderr[-3000:]
                 )
 
-            # =================================================
-            # ACTUAL FINAL DURATION
-            # =================================================
-
             voice_duration = get_audio_duration(
                 final_voice_file
             )
-
-            # =================================================
-            # SUBTITLE TIMING
-            # =================================================
 
             subtitle_data = []
 
@@ -1682,9 +1621,13 @@ if "myanmar_recap" in st.session_state:
                 chunks
             ):
 
-                raw_duration = raw_durations[index]
+                raw_duration = (
+                    raw_durations[index]
+                )
 
-                start_time = current_time
+                start_time = (
+                    current_time
+                )
 
                 end_time = (
                     start_time
@@ -1734,10 +1677,6 @@ if "myanmar_recap" in st.session_state:
                     0
                 )
 
-            # =================================================
-            # SESSION STATE
-            # =================================================
-
             st.session_state[
                 "voiceover_file"
             ] = final_voice_file
@@ -1771,10 +1710,6 @@ if "myanmar_recap" in st.session_state:
             st.session_state[
                 "tts_rate"
             ] = tts_rate
-
-            # =================================================
-            # RESULTS
-            # =================================================
 
             st.success(
                 f"✅ Myanmar {voice_gender} voiceover generated!"
@@ -2343,10 +2278,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     labels.append(
                         f"[{normal_label}]"
                     )
-
-                    # =============================================
-                    # FREEZE + ZOOM
-                    # =============================================
 
                     if end < video_duration:
 
