@@ -1,7 +1,7 @@
-streamlit>=1.53.0
-google-genai
+streamlit
+openai-whisper==20250625
+torch
+numpy
 opencv-python-headless
-openai-whisper
+google-genai
 edge-tts
-Pillow
-streamlit-drawable-canvas==0.13.0
