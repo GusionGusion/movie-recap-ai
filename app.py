@@ -69,8 +69,17 @@ def extract_audio_for_whisper(video_path):
 
     audio_file = os.path.join(
         tempfile.gettempdir(),
-        "movie_recap_whisper_audio.wav"
+        f"movie_recap_whisper_{os.getpid()}.wav"
     )
+
+    # Remove previous temporary audio if it exists.
+    if os.path.exists(audio_file):
+
+        try:
+            os.remove(audio_file)
+
+        except Exception:
+            pass
 
     result = subprocess.run(
         [
@@ -92,18 +101,36 @@ def extract_audio_for_whisper(video_path):
     )
 
     if result.returncode != 0:
+
         raise RuntimeError(
-            result.stderr[-3000:]
+            "FFmpeg audio extraction failed:\n"
+            + result.stderr[-3000:]
         )
 
     if not os.path.exists(audio_file):
+
         raise RuntimeError(
             "Extracted audio file was not created."
         )
 
-    if os.path.getsize(audio_file) < 1000:
+    file_size = os.path.getsize(
+        audio_file
+    )
+
+    if file_size < 1000:
+
         raise RuntimeError(
             "Extracted audio is empty or too short."
+        )
+
+    duration = get_audio_duration(
+        audio_file
+    )
+
+    if duration <= 0:
+
+        raise RuntimeError(
+            "Extracted audio duration is 0 seconds."
         )
 
     return audio_file
@@ -356,14 +383,19 @@ def extract_frame_bytes(
 
 @st.cache_resource
 def load_whisper_model(
-    model_name="base"
+    model_name="tiny"
 ):
 
     import whisper
 
-    return whisper.load_model(
-        model_name
+    # Explicit CPU avoids accidental backend/device problems
+    # on Streamlit Cloud.
+    model = whisper.load_model(
+        model_name,
+        device="cpu"
     )
+
+    return model
 
 
 # =========================================================
@@ -650,6 +682,8 @@ if uploaded_file is not None:
             f"{whisper_model}..."
         )
 
+        whisper_audio = None
+
         try:
 
             # -------------------------------------------------
@@ -664,23 +698,64 @@ if uploaded_file is not None:
                 )
             )
 
+            audio_duration = (
+                get_audio_duration(
+                    whisper_audio
+                )
+            )
+
+            st.caption(
+                f"🔊 Whisper Audio: "
+                f"{audio_duration:.2f} seconds"
+            )
+
             # -------------------------------------------------
-            # LOAD WHISPER MODEL
+            # LOAD WHISPER
             # -------------------------------------------------
+
+            import whisper
+            import numpy as np
 
             model = load_whisper_model(
                 whisper_model
             )
 
             # -------------------------------------------------
-            # TRANSCRIBE CLEAN WAV
+            # LOAD AUDIO INTO MEMORY
+            # -------------------------------------------------
+
+            audio = whisper.load_audio(
+                whisper_audio
+            )
+
+            audio = np.asarray(
+                audio,
+                dtype=np.float32
+            )
+
+            if audio.size == 0:
+
+                raise RuntimeError(
+                    "Whisper received an empty audio waveform."
+                )
+
+            st.caption(
+                f"🎧 Audio Samples: "
+                f"{audio.size:,}"
+            )
+
+            # -------------------------------------------------
+            # TRANSCRIBE
             # -------------------------------------------------
 
             result = model.transcribe(
-                whisper_audio,
+                audio,
                 language="en",
+                task="transcribe",
                 fp16=False,
-                verbose=False
+                verbose=False,
+                temperature=0,
+                condition_on_previous_text=False
             )
 
             st.session_state[
@@ -689,7 +764,10 @@ if uploaded_file is not None:
 
             st.session_state[
                 "transcript"
-            ] = result["text"]
+            ] = result.get(
+                "text",
+                ""
+            ).strip()
 
             st.success(
                 "✅ Transcript generated!"
@@ -700,6 +778,29 @@ if uploaded_file is not None:
             st.error(
                 f"❌ Transcription failed: {e}"
             )
+
+            # Extra diagnostic information.
+            try:
+
+                import whisper
+                import torch
+
+                st.code(
+                    (
+                        f"Whisper package: "
+                        f"{getattr(whisper, '__version__', 'unknown')}\n"
+                        f"Whisper path: "
+                        f"{getattr(whisper, '__file__', 'unknown')}\n"
+                        f"PyTorch: "
+                        f"{torch.__version__}\n"
+                        f"Whisper audio: "
+                        f"{whisper_audio}\n"
+                    ),
+                    language="text"
+                )
+
+            except Exception:
+                pass
 
 
 if "transcript" in st.session_state:
@@ -1397,17 +1498,9 @@ if "myanmar_recap" in st.session_state:
             # NATURAL CROSSFADE
             # =================================================
 
-            # IMPORTANT:
-            # No hard 0.4 second silence.
-            #
-            # TTS chunks overlap slightly so the natural
-            # end/start silence is blended instead of doubled.
-
             TTS_CROSSFADE = 0.06
 
             normalized_files = []
-
-            # Normalize every TTS segment first.
 
             for index, raw_file in enumerate(
                 raw_files
@@ -1478,18 +1571,14 @@ if "myanmar_recap" in st.session_state:
 
                 filter_parts = []
 
-                previous_label = (
-                    "[0:a]"
-                )
+                previous_label = "[0:a]"
 
                 for i in range(
                     1,
                     len(normalized_files)
                 ):
 
-                    output_label = (
-                        f"[a{i}]"
-                    )
+                    output_label = f"[a{i}]"
 
                     filter_parts.append(
                         (
@@ -1503,9 +1592,7 @@ if "myanmar_recap" in st.session_state:
                         )
                     )
 
-                    previous_label = (
-                        output_label
-                    )
+                    previous_label = output_label
 
                 filter_complex = ";".join(
                     filter_parts
@@ -1595,23 +1682,14 @@ if "myanmar_recap" in st.session_state:
                 chunks
             ):
 
-                raw_duration = (
-                    raw_durations[index]
-                )
+                raw_duration = raw_durations[index]
 
-                start_time = (
-                    current_time
-                )
-
-                # Crossfade removes part of the gap
-                # between segments.
+                start_time = current_time
 
                 end_time = (
                     start_time
                     + raw_duration
                 )
-
-                # Last chunk keeps its full duration.
 
                 if index < len(chunks) - 1:
 
