@@ -838,10 +838,10 @@ if blur_enabled:
         )
 
         st.info(
-            "GitHub repository ထဲမှာ "
-            "`blur_component/index.html` "
-            ရှိ/မရှိ စစ်ပြီး redeploy လုပ်ပါ။"
-        )
+    "Make sure blur_component/index.html "
+    "exists in your GitHub repository, "
+    "then redeploy the app."
+) 
 
     elif (
         "uploaded_file" not in st.session_state
