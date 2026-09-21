@@ -49,7 +49,6 @@
             -webkit-user-select: none;
 
             touch-action: none;
-
         }
 
         #video {
@@ -65,7 +64,6 @@
             object-fit: contain;
 
             background: #000;
-
         }
 
         #blurBox {
@@ -98,6 +96,7 @@
 
             touch-action: none;
 
+            cursor: move;
         }
 
         #blurLabel {
@@ -131,7 +130,6 @@
             white-space: nowrap;
 
             z-index: 30;
-
         }
 
         .handle {
@@ -150,12 +148,13 @@
             z-index: 50;
 
             touch-action: none;
-
         }
 
         .nw {
+
             left: -10px;
             top: -10px;
+
             cursor: nwse-resize;
         }
 
@@ -167,7 +166,6 @@
             transform: translateX(-50%);
 
             cursor: ns-resize;
-
         }
 
         .ne {
@@ -176,7 +174,6 @@
             top: -10px;
 
             cursor: nesw-resize;
-
         }
 
         .e {
@@ -187,7 +184,6 @@
             transform: translateY(-50%);
 
             cursor: ew-resize;
-
         }
 
         .se {
@@ -196,7 +192,6 @@
             bottom: -10px;
 
             cursor: nwse-resize;
-
         }
 
         .s {
@@ -207,7 +202,6 @@
             transform: translateX(-50%);
 
             cursor: ns-resize;
-
         }
 
         .sw {
@@ -216,7 +210,6 @@
             bottom: -10px;
 
             cursor: nesw-resize;
-
         }
 
         .w {
@@ -227,7 +220,6 @@
             transform: translateY(-50%);
 
             cursor: ew-resize;
-
         }
 
         @media (max-width: 600px) {
@@ -240,10 +232,10 @@
 
                 width: 24px;
                 height: 24px;
-
             }
 
             .nw {
+
                 left: -12px;
                 top: -12px;
             }
@@ -253,6 +245,7 @@
             }
 
             .ne {
+
                 right: -12px;
                 top: -12px;
             }
@@ -262,6 +255,7 @@
             }
 
             .se {
+
                 right: -12px;
                 bottom: -12px;
             }
@@ -271,6 +265,7 @@
             }
 
             .sw {
+
                 left: -12px;
                 bottom: -12px;
             }
@@ -288,6 +283,7 @@
 
 <body>
 
+
 <div id="editor">
 
     <video
@@ -297,46 +293,55 @@
         preload="metadata">
     </video>
 
+
     <div id="blurBox">
 
         <div id="blurLabel">
             BLUR
         </div>
 
+
         <div
             class="handle nw"
             data-handle="nw">
         </div>
+
 
         <div
             class="handle n"
             data-handle="n">
         </div>
 
+
         <div
             class="handle ne"
             data-handle="ne">
         </div>
+
 
         <div
             class="handle e"
             data-handle="e">
         </div>
 
+
         <div
             class="handle se"
             data-handle="se">
         </div>
+
 
         <div
             class="handle s"
             data-handle="s">
         </div>
 
+
         <div
             class="handle sw"
             data-handle="sw">
         </div>
+
 
         <div
             class="handle w"
@@ -350,108 +355,210 @@
 
 <script>
 
-/* =====================================================
-   STREAMLIT COMPONENT PROTOCOL
-   No CDN
-   No external JavaScript
-   ===================================================== */
 
 (function () {
 
     "use strict";
 
 
+    /*
+     * =====================================================
+     * STREAMLIT COMPONENT PROTOCOL
+     * =====================================================
+     *
+     * IMPORTANT:
+     *
+     * apiVersion MUST be at the top level
+     * of the componentReady message.
+     *
+     * It must NOT be inside data.
+     *
+     * =====================================================
+     */
+
+
     const COMPONENT_READY =
         "streamlit:componentReady";
+
 
     const SET_COMPONENT_VALUE =
         "streamlit:setComponentValue";
 
+
     const SET_FRAME_HEIGHT =
         "streamlit:setFrameHeight";
+
 
     const RENDER_EVENT =
         "streamlit:render";
 
 
-    function sendMessage(type, data) {
+    /*
+     * =====================================================
+     * SEND BASIC STREAMLIT MESSAGE
+     * =====================================================
+     */
+
+    function sendMessage(
+        type,
+        data
+    ) {
+
+        const message = {
+
+            isStreamlitMessage: true,
+
+            type: type
+
+        };
+
+
+        if (
+            data !== undefined
+        ) {
+
+            message.data = data;
+
+        }
+
 
         window.parent.postMessage(
-            {
-                isStreamlitMessage: true,
-
-                type: type,
-
-                ...(
-                    data !== undefined
-                    ? {data: data}
-                    : {}
-                )
-
-            },
+            message,
             "*"
         );
 
     }
 
 
+    /*
+     * =====================================================
+     * COMPONENT READY
+     * =====================================================
+     *
+     * apiVersion is intentionally OUTSIDE data.
+     *
+     * =====================================================
+     */
+
     function setComponentReady() {
 
-        sendMessage(
-            COMPONENT_READY,
+        window.parent.postMessage(
+
             {
+
+                isStreamlitMessage: true,
+
+                type:
+                    COMPONENT_READY,
+
                 apiVersion: 1
-            }
+
+            },
+
+            "*"
+
         );
 
     }
 
 
-    function setComponentValue(value) {
+    /*
+     * =====================================================
+     * SET COMPONENT VALUE
+     * =====================================================
+     */
 
-        sendMessage(
-            SET_COMPONENT_VALUE,
+    function setComponentValue(
+        value
+    ) {
+
+        window.parent.postMessage(
+
             {
-                value: value,
-                dataType: "json"
-            }
+
+                isStreamlitMessage: true,
+
+                type:
+                    SET_COMPONENT_VALUE,
+
+                value:
+                    value,
+
+                dataType:
+                    "json"
+
+            },
+
+            "*"
+
         );
 
     }
 
 
-    function setFrameHeight(height) {
+    /*
+     * =====================================================
+     * SET FRAME HEIGHT
+     * =====================================================
+     */
 
-        sendMessage(
-            SET_FRAME_HEIGHT,
+    function setFrameHeight(
+        height
+    ) {
+
+        window.parent.postMessage(
+
             {
-                height: Math.max(
-                    250,
-                    Math.ceil(height)
-                )
-            }
+
+                isStreamlitMessage: true,
+
+                type:
+                    SET_FRAME_HEIGHT,
+
+                height:
+                    Math.max(
+                        250,
+                        Math.ceil(height)
+                    )
+
+            },
+
+            "*"
+
         );
 
     }
 
 
-    /* =================================================
-       ELEMENTS
-       ================================================= */
+    /*
+     * =====================================================
+     * ELEMENTS
+     * =====================================================
+     */
 
     const editor =
-        document.getElementById("editor");
+        document.getElementById(
+            "editor"
+        );
+
 
     const video =
-        document.getElementById("video");
+        document.getElementById(
+            "video"
+        );
+
 
     const blurBox =
-        document.getElementById("blurBox");
+        document.getElementById(
+            "blurBox"
+        );
 
 
-    /* =================================================
-       STATE
-       ================================================= */
+    /*
+     * =====================================================
+     * STATE
+     * =====================================================
+     */
 
     let state = {
 
@@ -473,9 +580,11 @@
     let lastSent = null;
 
 
-    /* =================================================
-       CLAMP
-       ================================================= */
+    /*
+     * =====================================================
+     * CLAMP
+     * =====================================================
+     */
 
     function clamp(
         value,
@@ -494,15 +603,20 @@
     }
 
 
-    /* =================================================
-       NORMALIZE
-       ================================================= */
+    /*
+     * =====================================================
+     * NORMALIZE
+     * =====================================================
+     */
 
     function normalize() {
 
-        const minWidth = 8;
+        const minWidth =
+            8;
 
-        const minHeight = 5;
+
+        const minHeight =
+            5;
 
 
         state.width =
@@ -539,9 +653,11 @@
     }
 
 
-    /* =================================================
-       RENDER BOX
-       ================================================= */
+    /*
+     * =====================================================
+     * RENDER BLUR BOX
+     * =====================================================
+     */
 
     function renderBox() {
 
@@ -569,28 +685,39 @@
     }
 
 
-    /* =================================================
-       FRAME HEIGHT
-       ================================================= */
+    /*
+     * =====================================================
+     * FRAME HEIGHT
+     * =====================================================
+     */
 
     function updateHeight() {
 
         requestAnimationFrame(
+
             function () {
 
+                const height =
+                    editor.getBoundingClientRect()
+                    .height + 10;
+
+
                 setFrameHeight(
-                    editor.getBoundingClientRect().height + 10
+                    height
                 );
 
             }
+
         );
 
     }
 
 
-    /* =================================================
-       SEND VALUE
-       ================================================= */
+    /*
+     * =====================================================
+     * SEND BLUR POSITION
+     * =====================================================
+     */
 
     function sendValue() {
 
@@ -619,15 +746,21 @@
         };
 
 
+        /*
+         * Don't send duplicate values.
+         */
+
         if (
             lastSent &&
 
             Math.abs(
-                lastSent.x - result.x
+                lastSent.x -
+                result.x
             ) < 0.001 &&
 
             Math.abs(
-                lastSent.y - result.y
+                lastSent.y -
+                result.y
             ) < 0.001 &&
 
             Math.abs(
@@ -639,7 +772,6 @@
                 lastSent.height -
                 result.height
             ) < 0.001
-
         ) {
 
             return;
@@ -647,7 +779,8 @@
         }
 
 
-        lastSent = result;
+        lastSent =
+            result;
 
 
         setComponentValue(
@@ -657,14 +790,31 @@
     }
 
 
-    /* =================================================
-       POINTER POSITION
-       ================================================= */
+    /*
+     * =====================================================
+     * GET POINTER POSITION
+     * =====================================================
+     */
 
-    function pointerPosition(event) {
+    function pointerPosition(
+        event
+    ) {
 
         const rect =
             editor.getBoundingClientRect();
+
+
+        if (
+            rect.width <= 0 ||
+            rect.height <= 0
+        ) {
+
+            return {
+                x: 0,
+                y: 0
+            };
+
+        }
 
 
         const px =
@@ -680,21 +830,31 @@
         return {
 
             x:
-                (px / rect.width) * 100,
+                (
+                    px /
+                    rect.width
+                ) * 100,
 
             y:
-                (py / rect.height) * 100
+                (
+                    py /
+                    rect.height
+                ) * 100
 
         };
 
     }
 
 
-    /* =================================================
-       POINTER DOWN
-       ================================================= */
+    /*
+     * =====================================================
+     * POINTER DOWN
+     * =====================================================
+     */
 
-    function pointerDown(event) {
+    function pointerDown(
+        event
+    ) {
 
         event.preventDefault();
 
@@ -702,7 +862,9 @@
 
 
         const point =
-            pointerPosition(event);
+            pointerPosition(
+                event
+            );
 
 
         const handle =
@@ -711,37 +873,69 @@
             );
 
 
-        interaction = {
+        if (handle) {
 
-            type:
-                handle
-                ? "resize"
-                : "move",
+            interaction = {
 
-            handle:
-                handle
-                ? handle.dataset.handle
-                : null,
+                type:
+                    "resize",
 
-            startX:
-                point.x,
+                handle:
+                    handle.dataset.handle,
 
-            startY:
-                point.y,
+                startX:
+                    point.x,
 
-            originalX:
-                state.x,
+                startY:
+                    point.y,
 
-            originalY:
-                state.y,
+                originalX:
+                    state.x,
 
-            originalWidth:
-                state.width,
+                originalY:
+                    state.y,
 
-            originalHeight:
-                state.height
+                originalWidth:
+                    state.width,
 
-        };
+                originalHeight:
+                    state.height
+
+            };
+
+        }
+
+        else {
+
+            interaction = {
+
+                type:
+                    "move",
+
+                handle:
+                    null,
+
+                startX:
+                    point.x,
+
+                startY:
+                    point.y,
+
+                originalX:
+                    state.x,
+
+                originalY:
+                    state.y,
+
+                originalWidth:
+                    state.width,
+
+                originalHeight:
+                    state.height
+
+            };
+
+        }
 
 
         try {
@@ -750,19 +944,29 @@
                 event.pointerId
             );
 
-        } catch (e) {}
+        }
+
+        catch (error) {}
 
     }
 
 
-    /* =================================================
-       POINTER MOVE
-       ================================================= */
+    /*
+     * =====================================================
+     * POINTER MOVE
+     * =====================================================
+     */
 
-    function pointerMove(event) {
+    function pointerMove(
+        event
+    ) {
 
-        if (!interaction) {
+        if (
+            !interaction
+        ) {
+
             return;
+
         }
 
 
@@ -770,7 +974,9 @@
 
 
         const point =
-            pointerPosition(event);
+            pointerPosition(
+                event
+            );
 
 
         const dx =
@@ -783,9 +989,11 @@
             interaction.startY;
 
 
-        /* =============================================
-           MOVE
-           ============================================= */
+        /*
+         * ================================================
+         * MOVE
+         * ================================================
+         */
 
         if (
             interaction.type ===
@@ -819,9 +1027,11 @@
         }
 
 
-        /* =============================================
-           RESIZE
-           ============================================= */
+        /*
+         * ================================================
+         * RESIZE
+         * ================================================
+         */
 
         const handle =
             interaction.handle;
@@ -843,7 +1053,9 @@
             interaction.originalHeight;
 
 
-        /* LEFT */
+        /*
+         * LEFT
+         */
 
         if (
             handle.includes("w")
@@ -873,7 +1085,9 @@
         }
 
 
-        /* RIGHT */
+        /*
+         * RIGHT
+         */
 
         if (
             handle.includes("e")
@@ -885,7 +1099,7 @@
                 dx;
 
 
-            const limited =
+            const limitedRight =
                 clamp(
                     right,
                     interaction.originalX + 8,
@@ -894,13 +1108,15 @@
 
 
             width =
-                limited -
+                limitedRight -
                 interaction.originalX;
 
         }
 
 
-        /* TOP */
+        /*
+         * TOP
+         */
 
         if (
             handle.includes("n")
@@ -930,7 +1146,9 @@
         }
 
 
-        /* BOTTOM */
+        /*
+         * BOTTOM
+         */
 
         if (
             handle.includes("s")
@@ -942,7 +1160,7 @@
                 dy;
 
 
-            const limited =
+            const limitedBottom =
                 clamp(
                     bottom,
                     interaction.originalY + 5,
@@ -951,7 +1169,7 @@
 
 
             height =
-                limited -
+                limitedBottom -
                 interaction.originalY;
 
         }
@@ -980,14 +1198,22 @@
     }
 
 
-    /* =================================================
-       POINTER UP
-       ================================================= */
+    /*
+     * =====================================================
+     * POINTER UP
+     * =====================================================
+     */
 
-    function pointerUp(event) {
+    function pointerUp(
+        event
+    ) {
 
-        if (!interaction) {
+        if (
+            !interaction
+        ) {
+
             return;
+
         }
 
 
@@ -1003,16 +1229,19 @@
                 event.pointerId
             );
 
-        } catch (e) {}
+        }
+
+        catch (error) {}
 
 
         normalize();
 
         renderBox();
 
+
         /*
-         * Only send once when finger/mouse
-         * is released.
+         * Send ONLY after
+         * finger/mouse release.
          */
 
         sendValue();
@@ -1020,13 +1249,25 @@
     }
 
 
-    /* =================================================
-       POINTER CANCEL
-       ================================================= */
+    /*
+     * =====================================================
+     * POINTER CANCEL
+     * =====================================================
+     */
 
-    function pointerCancel(event) {
+    function pointerCancel() {
+
+        if (
+            !interaction
+        ) {
+
+            return;
+
+        }
+
 
         interaction = null;
+
 
         normalize();
 
@@ -1037,9 +1278,11 @@
     }
 
 
-    /* =================================================
-       EVENTS
-       ================================================= */
+    /*
+     * =====================================================
+     * POINTER EVENTS
+     * =====================================================
+     */
 
     blurBox.addEventListener(
         "pointerdown",
@@ -1065,19 +1308,76 @@
     );
 
 
-    /* =================================================
-       STREAMLIT RENDER MESSAGE
-       ================================================= */
+    /*
+     * =====================================================
+     * TOUCH PROTECTION
+     * =====================================================
+     */
 
-    function handleRender(event) {
+    blurBox.addEventListener(
+
+        "touchstart",
+
+        function (event) {
+
+            event.preventDefault();
+
+        },
+
+        {
+            passive: false
+        }
+
+    );
+
+
+    blurBox.addEventListener(
+
+        "touchmove",
+
+        function (event) {
+
+            if (interaction) {
+
+                event.preventDefault();
+
+            }
+
+        },
+
+        {
+            passive: false
+        }
+
+    );
+
+
+    /*
+     * =====================================================
+     * STREAMLIT RENDER MESSAGE
+     * =====================================================
+     */
+
+    function handleRender(
+        event
+    ) {
 
         const message =
             event.data;
 
 
         if (
-            !message ||
-            message.type !== RENDER_EVENT
+            !message
+        ) {
+
+            return;
+
+        }
+
+
+        if (
+            message.type !==
+            RENDER_EVENT
         ) {
 
             return;
@@ -1089,7 +1389,11 @@
             message.args || {};
 
 
-        /* VIDEO */
+        /*
+         * ================================================
+         * VIDEO
+         * ================================================
+         */
 
         if (
             args.video_src &&
@@ -1109,9 +1413,14 @@
         }
 
 
-        /* INITIAL POSITION */
+        /*
+         * ================================================
+         * INITIAL BLUR POSITION
+         * ================================================
+         */
 
         if (
+
             typeof args.initial_x ===
             "number" &&
 
@@ -1123,9 +1432,17 @@
 
             typeof args.initial_height ===
             "number"
+
         ) {
 
-            if (!interaction) {
+            /*
+             * Don't overwrite the user's
+             * current drag position.
+             */
+
+            if (
+                !interaction
+            ) {
 
                 state.x =
                     args.initial_x;
@@ -1155,9 +1472,11 @@
     }
 
 
-    /* =================================================
-       LISTEN FOR STREAMLIT
-       ================================================= */
+    /*
+     * =====================================================
+     * LISTEN TO STREAMLIT
+     * =====================================================
+     */
 
     window.addEventListener(
         "message",
@@ -1165,26 +1484,35 @@
     );
 
 
-    /* =================================================
-       RESIZE
-       ================================================= */
+    /*
+     * =====================================================
+     * WINDOW RESIZE
+     * =====================================================
+     */
 
     window.addEventListener(
+
         "resize",
+
         function () {
 
             renderBox();
 
         }
+
     );
 
 
-    /* =================================================
-       VIDEO LOADED
-       ================================================= */
+    /*
+     * =====================================================
+     * VIDEO METADATA
+     * =====================================================
+     */
 
     video.addEventListener(
+
         "loadedmetadata",
+
         function () {
 
             renderBox();
@@ -1192,12 +1520,38 @@
             updateHeight();
 
         }
+
     );
 
 
-    /* =================================================
-       RESIZE OBSERVER
-       ================================================= */
+    /*
+     * =====================================================
+     * VIDEO ERROR
+     * =====================================================
+     */
+
+    video.addEventListener(
+
+        "error",
+
+        function () {
+
+            console.log(
+                "Video could not be played by browser."
+            );
+
+            updateHeight();
+
+        }
+
+    );
+
+
+    /*
+     * =====================================================
+     * RESIZE OBSERVER
+     * =====================================================
+     */
 
     if (
         window.ResizeObserver
@@ -1205,11 +1559,13 @@
 
         const observer =
             new ResizeObserver(
+
                 function () {
 
                     updateHeight();
 
                 }
+
             );
 
 
@@ -1220,16 +1576,24 @@
     }
 
 
-    /* =================================================
-       INITIALIZE
-       ================================================= */
+    /*
+     * =====================================================
+     * INITIAL BOX
+     * =====================================================
+     */
 
     renderBox();
 
 
     /*
-     * Tell Streamlit that this component
-     * is ready.
+     * =====================================================
+     * TELL STREAMLIT COMPONENT IS READY
+     * =====================================================
+     *
+     * IMPORTANT:
+     * apiVersion: 1 is TOP LEVEL.
+     *
+     * =====================================================
      */
 
     setComponentReady();
@@ -1243,4 +1607,5 @@
 </script>
 
 </body>
+
 </html>
