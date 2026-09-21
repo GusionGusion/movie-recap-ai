@@ -805,13 +805,19 @@ if blur_enabled:
 
             if ret and preview_frame is not None:
 
+                # -------------------------------------------------
                 # Convert BGR -> RGB
+                # -------------------------------------------------
+
                 preview_frame = cv2.cvtColor(
                     preview_frame,
                     cv2.COLOR_BGR2RGB
                 )
 
+                # -------------------------------------------------
                 # Keep preview manageable on mobile
+                # -------------------------------------------------
+
                 max_preview_width = 700
 
                 preview_scale = min(
@@ -842,6 +848,17 @@ if blur_enabled:
 
                 canvas_width = preview_frame.shape[1]
                 canvas_height = preview_frame.shape[0]
+
+                # -------------------------------------------------
+                # IMPORTANT:
+                # streamlit-drawable-canvas expects a PIL Image
+                # for background_image.
+                # -------------------------------------------------
+
+                preview_image = Image.fromarray(
+                    preview_frame
+                ).convert("RGB")
+
 
                 # -------------------------------------------------
                 # Initial Blur Box
@@ -959,7 +976,7 @@ if blur_enabled:
                     fill_color="rgba(255, 0, 0, 0.25)",
                     stroke_width=3,
                     stroke_color="#FF0000",
-                    background_image=preview_frame,
+                    background_image=preview_image,
                     update_streamlit=True,
                     height=canvas_height,
                     width=canvas_width,
@@ -3114,10 +3131,9 @@ if (
             # -------------------------------------------------
             # Helper: blur a scaled video stream
             #
-            # IMPORTANT:
-            # Blur is inserted BEFORE zoompan.
-            # Therefore the blur area belongs to the video
-            # frame and zooms together with the freeze frame.
+            # Blur is applied BEFORE zoompan.
+            # Therefore the blur area belongs to the freeze
+            # frame and zooms together with the frame.
             # -------------------------------------------------
 
             def make_blur_filter(
@@ -3135,23 +3151,32 @@ if (
 
                     return
 
-                filter_parts.append(
-                    f"{input_label}"
-                    f"split=2"
-                    f"[blurbase{output_label.strip('[]')}]"
-                    f"[cleanbase{output_label.strip('[]')}]"
+                unique_name = (
+                    output_label
+                    .strip("[]")
+                    .replace(
+                        "-",
+                        "_"
+                    )
                 )
 
                 blurbase_name = (
-                    f"[blurbase{output_label.strip('[]')}]"
+                    f"[blurbase_{unique_name}]"
                 )
 
                 cleanbase_name = (
-                    f"[cleanbase{output_label.strip('[]')}]"
+                    f"[cleanbase_{unique_name}]"
                 )
 
                 blurred_name = (
-                    f"[blurred{output_label.strip('[]')}]"
+                    f"[blurred_{unique_name}]"
+                )
+
+                filter_parts.append(
+                    f"{input_label}"
+                    f"split=2"
+                    f"{blurbase_name}"
+                    f"{cleanbase_name}"
                 )
 
                 filter_parts.append(
@@ -3317,10 +3342,7 @@ if (
                         )
 
                         # -----------------------------------------
-                        # BLUR IS APPLIED HERE
-                        #
-                        # This is before zoompan.
-                        # So zoompan zooms the already blurred frame.
+                        # BLUR BEFORE ZOOM
                         # -----------------------------------------
 
                         freeze_blur_label = (
@@ -3370,7 +3392,7 @@ if (
                             )
 
                         # -----------------------------------------
-                        # Zoom the blurred frame
+                        # Zoom already blurred freeze frame
                         # -----------------------------------------
 
                         filter_parts.append(
