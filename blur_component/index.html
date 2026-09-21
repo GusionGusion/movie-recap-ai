@@ -1,298 +1,254 @@
-<!DOCTYPE html>
-<html lang="en">
-
+<!DOCTYPE html><html lang="en">
 <head>
+<meta charset="UTF-8">
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+>
+<title>Blur Video Editor</title><style>
+    * {
+        box-sizing: border-box;
+    }
 
-    <meta charset="UTF-8">
+    html,
+    body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        background: #080b16;
+        overflow: hidden;
+        font-family: Arial, sans-serif;
+    }
 
-    <meta
-        name="viewport"
-        content="width=device-width,
-                 initial-scale=1.0,
-                 maximum-scale=1.0,
-                 user-scalable=no"
-    >
+    #app {
+        width: 100%;
+        padding: 8px;
+    }
 
-    <title>Movie Recap Blur Editor</title>
+    /* ==============================
+       VIDEO AREA
+       ============================== */
 
-    <style>
+    #editor {
+        position: relative;
+        width: 100%;
+        max-width: 1100px;
+        margin: 0 auto;
+        background: #000;
+        border-radius: 12px;
+        overflow: hidden;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+    }
 
-        * {
-            box-sizing: border-box;
-        }
+    #video {
+        display: block;
+        width: 100%;
+        height: auto;
+        max-height: 78vh;
+        min-height: 320px;
+        object-fit: contain;
+        background: #000;
+        pointer-events: none;
+    }
 
-        html,
-        body {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            background: #000;
-            overflow: hidden;
-            font-family: Arial, sans-serif;
+    /* ==============================
+       BLUR BOX
+       ============================== */
+
+    #blurBox {
+        position: absolute;
+
+        left: 10%;
+        top: 78%;
+        width: 80%;
+        height: 18%;
+
+        min-width: 40px;
+        min-height: 30px;
+
+        border: 2px solid #b56cff;
+        background: rgba(160, 80, 255, 0.18);
+
+        box-shadow:
+            0 0 0 1px rgba(255,255,255,0.18),
+            0 0 14px rgba(181,108,255,0.45);
+
+        border-radius: 6px;
+
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+
+        z-index: 20;
+    }
+
+    #blurLabel {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+
+        color: #fff;
+        font-size: 13px;
+        font-weight: bold;
+
+        white-space: nowrap;
+        pointer-events: none;
+
+        text-shadow:
+            0 1px 3px #000,
+            0 0 6px #000;
+    }
+
+    /* ==============================
+       RESIZE HANDLES
+       ============================== */
+
+    .handle {
+        position: absolute;
+        width: 20px;
+        height: 20px;
+
+        background: #fff;
+        border: 2px solid #9b4dff;
+        border-radius: 50%;
+
+        box-shadow: 0 1px 6px rgba(0,0,0,0.7);
+
+        z-index: 30;
+
+        touch-action: none;
+    }
+
+    .nw {
+        left: -10px;
+        top: -10px;
+        cursor: nwse-resize;
+    }
+
+    .n {
+        left: 50%;
+        top: -10px;
+        transform: translateX(-50%);
+        cursor: ns-resize;
+    }
+
+    .ne {
+        right: -10px;
+        top: -10px;
+        cursor: nesw-resize;
+    }
+
+    .e {
+        right: -10px;
+        top: 50%;
+        transform: translateY(-50%);
+        cursor: ew-resize;
+    }
+
+    .se {
+        right: -10px;
+        bottom: -10px;
+        cursor: nwse-resize;
+    }
+
+    .s {
+        left: 50%;
+        bottom: -10px;
+        transform: translateX(-50%);
+        cursor: ns-resize;
+    }
+
+    .sw {
+        left: -10px;
+        bottom: -10px;
+        cursor: nesw-resize;
+    }
+
+    .w {
+        left: -10px;
+        top: 50%;
+        transform: translateY(-50%);
+        cursor: ew-resize;
+    }
+
+    /* ==============================
+       MOBILE
+       ============================== */
+
+    @media (max-width: 700px) {
+
+        #app {
+            padding: 4px;
         }
 
         #editor {
-
-            position: relative;
-
             width: 100%;
-
-            margin: 0 auto;
-
-            background: #000;
-
-            overflow: hidden;
-
-            border-radius: 10px;
-
-            user-select: none;
-            -webkit-user-select: none;
-
-            touch-action: none;
+            border-radius: 8px;
         }
 
         #video {
-
-            display: block;
-
             width: 100%;
-
-            height: auto;
-
-            max-height: 75vh;
-
-            object-fit: contain;
-
-            background: #000;
-        }
-
-        #blurBox {
-
-            position: absolute;
-
-            left: 10%;
-            top: 78%;
-
-            width: 80%;
-            height: 18%;
-
-            min-width: 8%;
-            min-height: 5%;
-
-            border: 2px solid #ff3158;
-
-            background: rgba(
-                255,
-                49,
-                88,
-                0.15
-            );
-
-            box-shadow:
-                0 0 0 1px rgba(0,0,0,0.5),
-                0 0 12px rgba(255,49,88,0.3);
-
-            z-index: 10;
-
-            touch-action: none;
-
-            cursor: move;
-        }
-
-        #blurLabel {
-
-            position: absolute;
-
-            left: 50%;
-            top: 4px;
-
-            transform: translateX(-50%);
-
-            padding: 3px 9px;
-
-            border-radius: 5px;
-
-            background: rgba(
-                255,
-                49,
-                88,
-                0.95
-            );
-
-            color: white;
-
-            font-size: 11px;
-
-            font-weight: bold;
-
-            pointer-events: none;
-
-            white-space: nowrap;
-
-            z-index: 30;
+            max-height: 72vh;
+            min-height: 260px;
         }
 
         .handle {
-
-            position: absolute;
-
-            width: 20px;
-            height: 20px;
-
-            border-radius: 50%;
-
-            background: #fff;
-
-            border: 3px solid #ff3158;
-
-            z-index: 50;
-
-            touch-action: none;
+            width: 24px;
+            height: 24px;
         }
 
         .nw {
-
-            left: -10px;
-            top: -10px;
-
-            cursor: nwse-resize;
+            left: -12px;
+            top: -12px;
         }
 
         .n {
-
-            left: 50%;
-            top: -10px;
-
-            transform: translateX(-50%);
-
-            cursor: ns-resize;
+            top: -12px;
         }
 
         .ne {
-
-            right: -10px;
-            top: -10px;
-
-            cursor: nesw-resize;
+            right: -12px;
+            top: -12px;
         }
 
         .e {
-
-            right: -10px;
-            top: 50%;
-
-            transform: translateY(-50%);
-
-            cursor: ew-resize;
+            right: -12px;
         }
 
         .se {
-
-            right: -10px;
-            bottom: -10px;
-
-            cursor: nwse-resize;
+            right: -12px;
+            bottom: -12px;
         }
 
         .s {
-
-            left: 50%;
-            bottom: -10px;
-
-            transform: translateX(-50%);
-
-            cursor: ns-resize;
+            bottom: -12px;
         }
 
         .sw {
-
-            left: -10px;
-            bottom: -10px;
-
-            cursor: nesw-resize;
+            left: -12px;
+            bottom: -12px;
         }
 
         .w {
-
-            left: -10px;
-            top: 50%;
-
-            transform: translateY(-50%);
-
-            cursor: ew-resize;
+            left: -12px;
         }
 
-        @media (max-width: 600px) {
-
-            #video {
-                max-height: 70vh;
-            }
-
-            .handle {
-
-                width: 24px;
-                height: 24px;
-            }
-
-            .nw {
-
-                left: -12px;
-                top: -12px;
-            }
-
-            .n {
-                top: -12px;
-            }
-
-            .ne {
-
-                right: -12px;
-                top: -12px;
-            }
-
-            .e {
-                right: -12px;
-            }
-
-            .se {
-
-                right: -12px;
-                bottom: -12px;
-            }
-
-            .s {
-                bottom: -12px;
-            }
-
-            .sw {
-
-                left: -12px;
-                bottom: -12px;
-            }
-
-            .w {
-                left: -12px;
-            }
-
+        #blurLabel {
+            font-size: 12px;
         }
-
-    </style>
-
-</head>
-
-
-<body>
-
-
-<div id="editor">
+    }
+</style></head><body><div id="app"><div id="editor">
 
     <video
         id="video"
         controls
         playsinline
-        preload="metadata">
-    </video>
-
+        webkit-playsinline
+        preload="metadata"
+    ></video>
 
     <div id="blurBox">
 
@@ -300,1312 +256,688 @@
             BLUR
         </div>
 
-
-        <div
-            class="handle nw"
-            data-handle="nw">
-        </div>
-
-
-        <div
-            class="handle n"
-            data-handle="n">
-        </div>
-
-
-        <div
-            class="handle ne"
-            data-handle="ne">
-        </div>
-
-
-        <div
-            class="handle e"
-            data-handle="e">
-        </div>
-
-
-        <div
-            class="handle se"
-            data-handle="se">
-        </div>
-
-
-        <div
-            class="handle s"
-            data-handle="s">
-        </div>
-
-
-        <div
-            class="handle sw"
-            data-handle="sw">
-        </div>
-
-
-        <div
-            class="handle w"
-            data-handle="w">
-        </div>
+        <div class="handle nw" data-handle="nw"></div>
+        <div class="handle n"  data-handle="n"></div>
+        <div class="handle ne" data-handle="ne"></div>
+        <div class="handle e"  data-handle="e"></div>
+        <div class="handle se" data-handle="se"></div>
+        <div class="handle s"  data-handle="s"></div>
+        <div class="handle sw" data-handle="sw"></div>
+        <div class="handle w"  data-handle="w"></div>
 
     </div>
 
 </div>
 
+</div><script>
 
-<script>
+/* =========================================================
+   STREAMLIT COMPONENT
+   ========================================================= */
+
+const COMPONENT_READY = "streamlit:componentReady";
+const SET_COMPONENT_VALUE = "streamlit:setComponentValue";
+const SET_FRAME_HEIGHT = "streamlit:setFrameHeight";
+const RENDER = "streamlit:render";
+
+let currentArgs = {};
+
+let box = {
+    x: 10,
+    y: 78,
+    width: 80,
+    height: 18
+};
+
+let interaction = null;
+
+let lastSentValue = null;
+
+const editor = document.getElementById("editor");
+const video = document.getElementById("video");
+const blurBox = document.getElementById("blurBox");
 
 
-(function () {
+/* =========================================================
+   STREAMLIT MESSAGE
+   ========================================================= */
 
-    "use strict";
+function sendComponentValue(value) {
 
+    const rounded = {
+        x: Number(value.x.toFixed(2)),
+        y: Number(value.y.toFixed(2)),
+        width: Number(value.width.toFixed(2)),
+        height: Number(value.height.toFixed(2))
+    };
 
     /*
-     * =====================================================
-     * STREAMLIT COMPONENT PROTOCOL
-     * =====================================================
-     *
-     * IMPORTANT:
-     *
-     * apiVersion MUST be at the top level
-     * of the componentReady message.
-     *
-     * It must NOT be inside data.
-     *
-     * =====================================================
-     */
+       Prevent duplicate values from being sent.
+    */
+    const serialized = JSON.stringify(rounded);
 
+    if (serialized === lastSentValue) {
+        return;
+    }
 
-    const COMPONENT_READY =
-        "streamlit:componentReady";
+    lastSentValue = serialized;
 
-
-    const SET_COMPONENT_VALUE =
-        "streamlit:setComponentValue";
-
-
-    const SET_FRAME_HEIGHT =
-        "streamlit:setFrameHeight";
-
-
-    const RENDER_EVENT =
-        "streamlit:render";
-
-
-    /*
-     * =====================================================
-     * SEND BASIC STREAMLIT MESSAGE
-     * =====================================================
-     */
-
-    function sendMessage(
-        type,
-        data
-    ) {
-
-        const message = {
-
+    window.parent.postMessage(
+        {
             isStreamlitMessage: true,
-
-            type: type
-
-        };
-
-
-        if (
-            data !== undefined
-        ) {
-
-            message.data = data;
-
-        }
+            type: SET_COMPONENT_VALUE,
+            value: rounded,
+            dataType: "json"
+        },
+        "*"
+    );
+}
 
 
-        window.parent.postMessage(
-            message,
-            "*"
-        );
+function setFrameHeight() {
 
+    const height = Math.max(
+        320,
+        editor.getBoundingClientRect().height + 16
+    );
+
+    window.parent.postMessage(
+        {
+            isStreamlitMessage: true,
+            type: SET_FRAME_HEIGHT,
+            height: Math.ceil(height)
+        },
+        "*"
+    );
+}
+
+
+/* =========================================================
+   COMPONENT READY
+   ========================================================= */
+
+function setComponentReady() {
+
+    window.parent.postMessage(
+        {
+            isStreamlitMessage: true,
+            type: COMPONENT_READY,
+            apiVersion: 1
+        },
+        "*"
+    );
+}
+
+
+/* =========================================================
+   APPLY BOX
+   ========================================================= */
+
+function applyBox() {
+
+    blurBox.style.left = box.x + "%";
+    blurBox.style.top = box.y + "%";
+    blurBox.style.width = box.width + "%";
+    blurBox.style.height = box.height + "%";
+
+    requestAnimationFrame(setFrameHeight);
+}
+
+
+/* =========================================================
+   READ INITIAL VALUES
+   ========================================================= */
+
+function getNumber(value, fallback) {
+
+    const n = Number(value);
+
+    if (!Number.isFinite(n)) {
+        return fallback;
     }
 
+    return n;
+}
+
+
+function loadInitialBox(args) {
 
     /*
-     * =====================================================
-     * COMPONENT READY
-     * =====================================================
-     *
-     * apiVersion is intentionally OUTSIDE data.
-     *
-     * =====================================================
-     */
+       IMPORTANT:
 
-    function setComponentReady() {
+       Only load Python values when the component
+       receives a NEW render.
 
-        window.parent.postMessage(
+       Do NOT reset the box while the user is
+       dragging/resizing.
+    */
 
-            {
-
-                isStreamlitMessage: true,
-
-                type:
-                    COMPONENT_READY,
-
-                apiVersion: 1
-
-            },
-
-            "*"
-
-        );
-
+    if (interaction !== null) {
+        return;
     }
 
+    const newBox = {
 
-    /*
-     * =====================================================
-     * SET COMPONENT VALUE
-     * =====================================================
-     */
+        x: getNumber(
+            args.initial_x,
+            10
+        ),
 
-    function setComponentValue(
-        value
-    ) {
+        y: getNumber(
+            args.initial_y,
+            78
+        ),
 
-        window.parent.postMessage(
+        width: getNumber(
+            args.initial_width,
+            80
+        ),
 
-            {
+        height: getNumber(
+            args.initial_height,
+            18
+        )
+    };
 
-                isStreamlitMessage: true,
+    box = normalizeBox(newBox);
 
-                type:
-                    SET_COMPONENT_VALUE,
-
-                value:
-                    value,
-
-                dataType:
-                    "json"
-
-            },
-
-            "*"
-
-        );
-
-    }
+    applyBox();
+}
 
 
-    /*
-     * =====================================================
-     * SET FRAME HEIGHT
-     * =====================================================
-     */
+/* =========================================================
+   NORMALIZE
+   ========================================================= */
 
-    function setFrameHeight(
+function normalizeBox(value) {
+
+    let x = value.x;
+    let y = value.y;
+    let width = value.width;
+    let height = value.height;
+
+    width = Math.max(3, Math.min(width, 100));
+    height = Math.max(3, Math.min(height, 100));
+
+    x = Math.max(0, Math.min(x, 100 - width));
+    y = Math.max(0, Math.min(y, 100 - height));
+
+    return {
+        x,
+        y,
+        width,
         height
-    ) {
+    };
+}
 
-        window.parent.postMessage(
 
-            {
+/* =========================================================
+   POINTER POSITION
+   ========================================================= */
 
-                isStreamlitMessage: true,
+function pointerPercent(event) {
 
-                type:
-                    SET_FRAME_HEIGHT,
+    const rect = editor.getBoundingClientRect();
 
-                height:
-                    Math.max(
-                        250,
-                        Math.ceil(height)
-                    )
+    const x =
+        ((event.clientX - rect.left) / rect.width) * 100;
 
-            },
+    const y =
+        ((event.clientY - rect.top) / rect.height) * 100;
 
-            "*"
+    return {
+        x,
+        y
+    };
+}
 
+
+/* =========================================================
+   START MOVE / RESIZE
+   ========================================================= */
+
+function startInteraction(event, type) {
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const p = pointerPercent(event);
+
+    interaction = {
+
+        type: type,
+
+        startPointerX: p.x,
+        startPointerY: p.y,
+
+        startBox: {
+            x: box.x,
+            y: box.y,
+            width: box.width,
+            height: box.height
+        }
+    };
+
+    try {
+        event.currentTarget.setPointerCapture(
+            event.pointerId
         );
+    } catch (e) {}
 
+}
+
+
+/* =========================================================
+   MOVE / RESIZE
+   ========================================================= */
+
+function updateInteraction(event) {
+
+    if (!interaction) {
+        return;
     }
 
+    event.preventDefault();
 
-    /*
-     * =====================================================
-     * ELEMENTS
-     * =====================================================
-     */
+    const p = pointerPercent(event);
 
-    const editor =
-        document.getElementById(
-            "editor"
-        );
+    const dx =
+        p.x - interaction.startPointerX;
 
+    const dy =
+        p.y - interaction.startPointerY;
 
-    const video =
-        document.getElementById(
-            "video"
-        );
+    const start = interaction.startBox;
 
-
-    const blurBox =
-        document.getElementById(
-            "blurBox"
-        );
-
-
-    /*
-     * =====================================================
-     * STATE
-     * =====================================================
-     */
-
-    let state = {
-
-        x: 10,
-
-        y: 78,
-
-        width: 80,
-
-        height: 18
-
+    let next = {
+        x: start.x,
+        y: start.y,
+        width: start.width,
+        height: start.height
     };
 
 
-    let videoSrc = "";
+    /* =========================
+       MOVE
+       ========================= */
 
-    let interaction = null;
+    if (interaction.type === "move") {
 
-    let lastSent = null;
+        next.x = start.x + dx;
+        next.y = start.y + dy;
 
-
-    /*
-     * =====================================================
-     * CLAMP
-     * =====================================================
-     */
-
-    function clamp(
-        value,
-        min,
-        max
-    ) {
-
-        return Math.max(
-            min,
+        next.x = Math.max(
+            0,
             Math.min(
-                max,
-                value
+                next.x,
+                100 - next.width
             )
         );
 
+        next.y = Math.max(
+            0,
+            Math.min(
+                next.y,
+                100 - next.height
+            )
+        );
     }
 
 
-    /*
-     * =====================================================
-     * NORMALIZE
-     * =====================================================
-     */
+    /* =========================
+       NORTH
+       ========================= */
 
-    function normalize() {
+    if (interaction.type.includes("n")) {
 
-        const minWidth =
-            8;
+        const newY =
+            start.y + dy;
 
+        const newHeight =
+            start.height - dy;
 
-        const minHeight =
-            5;
+        if (newHeight >= 3) {
 
-
-        state.width =
-            clamp(
-                state.width,
-                minWidth,
-                100
-            );
-
-
-        state.height =
-            clamp(
-                state.height,
-                minHeight,
-                100
-            );
-
-
-        state.x =
-            clamp(
-                state.x,
+            next.y = Math.max(
                 0,
-                100 - state.width
+                newY
             );
 
-
-        state.y =
-            clamp(
-                state.y,
-                0,
-                100 - state.height
-            );
-
-    }
-
-
-    /*
-     * =====================================================
-     * RENDER BLUR BOX
-     * =====================================================
-     */
-
-    function renderBox() {
-
-        normalize();
-
-
-        blurBox.style.left =
-            state.x + "%";
-
-
-        blurBox.style.top =
-            state.y + "%";
-
-
-        blurBox.style.width =
-            state.width + "%";
-
-
-        blurBox.style.height =
-            state.height + "%";
-
-
-        updateHeight();
-
-    }
-
-
-    /*
-     * =====================================================
-     * FRAME HEIGHT
-     * =====================================================
-     */
-
-    function updateHeight() {
-
-        requestAnimationFrame(
-
-            function () {
-
-                const height =
-                    editor.getBoundingClientRect()
-                    .height + 10;
-
-
-                setFrameHeight(
-                    height
+            next.height =
+                Math.min(
+                    newHeight,
+                    start.y + start.height
                 );
-
-            }
-
-        );
-
+        }
     }
 
 
+    /* =========================
+       SOUTH
+       ========================= */
+
+    if (interaction.type.includes("s")) {
+
+        const newHeight =
+            start.height + dy;
+
+        if (newHeight >= 3) {
+
+            next.height =
+                Math.min(
+                    newHeight,
+                    100 - start.y
+                );
+        }
+    }
+
+
+    /* =========================
+       WEST
+       ========================= */
+
+    if (interaction.type.includes("w")) {
+
+        const newX =
+            start.x + dx;
+
+        const newWidth =
+            start.width - dx;
+
+        if (newWidth >= 3) {
+
+            next.x = Math.max(
+                0,
+                newX
+            );
+
+            next.width =
+                Math.min(
+                    newWidth,
+                    start.x + start.width
+                );
+        }
+    }
+
+
+    /* =========================
+       EAST
+       ========================= */
+
+    if (interaction.type.includes("e")) {
+
+        const newWidth =
+            start.width + dx;
+
+        if (newWidth >= 3) {
+
+            next.width =
+                Math.min(
+                    newWidth,
+                    100 - start.x
+                );
+        }
+    }
+
+
+    box = normalizeBox(next);
+
+    applyBox();
+}
+
+
+/* =========================================================
+   END INTERACTION
+   ========================================================= */
+
+function endInteraction(event) {
+
+    if (!interaction) {
+        return;
+    }
+
+    event.preventDefault();
+
+    interaction = null;
+
     /*
-     * =====================================================
-     * SEND BLUR POSITION
-     * =====================================================
-     */
+       Send the FINAL position only once.
+    */
 
-    function sendValue() {
+    sendComponentValue(box);
 
-        const result = {
+    setFrameHeight();
+}
 
-            x:
-                Number(
-                    state.x.toFixed(3)
-                ),
 
-            y:
-                Number(
-                    state.y.toFixed(3)
-                ),
+/* =========================================================
+   BLUR BOX EVENTS
+   ========================================================= */
 
-            width:
-                Number(
-                    state.width.toFixed(3)
-                ),
-
-            height:
-                Number(
-                    state.height.toFixed(3)
-                )
-
-        };
-
+blurBox.addEventListener(
+    "pointerdown",
+    function(event) {
 
         /*
-         * Don't send duplicate values.
-         */
+           If the user touched a resize handle,
+           don't start moving the entire box.
+        */
 
         if (
-            lastSent &&
-
-            Math.abs(
-                lastSent.x -
-                result.x
-            ) < 0.001 &&
-
-            Math.abs(
-                lastSent.y -
-                result.y
-            ) < 0.001 &&
-
-            Math.abs(
-                lastSent.width -
-                result.width
-            ) < 0.001 &&
-
-            Math.abs(
-                lastSent.height -
-                result.height
-            ) < 0.001
+            event.target.classList.contains("handle")
         ) {
-
             return;
-
         }
 
-
-        lastSent =
-            result;
-
-
-        setComponentValue(
-            result
-        );
-
-    }
-
-
-    /*
-     * =====================================================
-     * GET POINTER POSITION
-     * =====================================================
-     */
-
-    function pointerPosition(
-        event
-    ) {
-
-        const rect =
-            editor.getBoundingClientRect();
-
-
-        if (
-            rect.width <= 0 ||
-            rect.height <= 0
-        ) {
-
-            return {
-                x: 0,
-                y: 0
-            };
-
-        }
-
-
-        const px =
-            event.clientX -
-            rect.left;
-
-
-        const py =
-            event.clientY -
-            rect.top;
-
-
-        return {
-
-            x:
-                (
-                    px /
-                    rect.width
-                ) * 100,
-
-            y:
-                (
-                    py /
-                    rect.height
-                ) * 100
-
-        };
-
-    }
-
-
-    /*
-     * =====================================================
-     * POINTER DOWN
-     * =====================================================
-     */
-
-    function pointerDown(
-        event
-    ) {
-
-        event.preventDefault();
-
-        event.stopPropagation();
-
-
-        const point =
-            pointerPosition(
-                event
-            );
-
-
-        const handle =
-            event.target.closest(
-                ".handle"
-            );
-
-
-        if (handle) {
-
-            interaction = {
-
-                type:
-                    "resize",
-
-                handle:
-                    handle.dataset.handle,
-
-                startX:
-                    point.x,
-
-                startY:
-                    point.y,
-
-                originalX:
-                    state.x,
-
-                originalY:
-                    state.y,
-
-                originalWidth:
-                    state.width,
-
-                originalHeight:
-                    state.height
-
-            };
-
-        }
-
-        else {
-
-            interaction = {
-
-                type:
-                    "move",
-
-                handle:
-                    null,
-
-                startX:
-                    point.x,
-
-                startY:
-                    point.y,
-
-                originalX:
-                    state.x,
-
-                originalY:
-                    state.y,
-
-                originalWidth:
-                    state.width,
-
-                originalHeight:
-                    state.height
-
-            };
-
-        }
-
-
-        try {
-
-            blurBox.setPointerCapture(
-                event.pointerId
-            );
-
-        }
-
-        catch (error) {}
-
-    }
-
-
-    /*
-     * =====================================================
-     * POINTER MOVE
-     * =====================================================
-     */
-
-    function pointerMove(
-        event
-    ) {
-
-        if (
-            !interaction
-        ) {
-
-            return;
-
-        }
-
-
-        event.preventDefault();
-
-
-        const point =
-            pointerPosition(
-                event
-            );
-
-
-        const dx =
-            point.x -
-            interaction.startX;
-
-
-        const dy =
-            point.y -
-            interaction.startY;
-
-
-        /*
-         * ================================================
-         * MOVE
-         * ================================================
-         */
-
-        if (
-            interaction.type ===
+        startInteraction(
+            event,
             "move"
-        ) {
-
-            state.x =
-                interaction.originalX +
-                dx;
-
-
-            state.y =
-                interaction.originalY +
-                dy;
-
-
-            state.width =
-                interaction.originalWidth;
-
-
-            state.height =
-                interaction.originalHeight;
-
-
-            normalize();
-
-            renderBox();
-
-            return;
-
-        }
-
-
-        /*
-         * ================================================
-         * RESIZE
-         * ================================================
-         */
-
-        const handle =
-            interaction.handle;
-
-
-        let x =
-            interaction.originalX;
-
-
-        let y =
-            interaction.originalY;
-
-
-        let width =
-            interaction.originalWidth;
-
-
-        let height =
-            interaction.originalHeight;
-
-
-        /*
-         * LEFT
-         */
-
-        if (
-            handle.includes("w")
-        ) {
-
-            const right =
-                interaction.originalX +
-                interaction.originalWidth;
-
-
-            const newX =
-                interaction.originalX +
-                dx;
-
-
-            x =
-                clamp(
-                    newX,
-                    0,
-                    right - 8
-                );
-
-
-            width =
-                right - x;
-
-        }
-
-
-        /*
-         * RIGHT
-         */
-
-        if (
-            handle.includes("e")
-        ) {
-
-            const right =
-                interaction.originalX +
-                interaction.originalWidth +
-                dx;
-
-
-            const limitedRight =
-                clamp(
-                    right,
-                    interaction.originalX + 8,
-                    100
-                );
-
-
-            width =
-                limitedRight -
-                interaction.originalX;
-
-        }
-
-
-        /*
-         * TOP
-         */
-
-        if (
-            handle.includes("n")
-        ) {
-
-            const bottom =
-                interaction.originalY +
-                interaction.originalHeight;
-
-
-            const newY =
-                interaction.originalY +
-                dy;
-
-
-            y =
-                clamp(
-                    newY,
-                    0,
-                    bottom - 5
-                );
-
-
-            height =
-                bottom - y;
-
-        }
-
-
-        /*
-         * BOTTOM
-         */
-
-        if (
-            handle.includes("s")
-        ) {
-
-            const bottom =
-                interaction.originalY +
-                interaction.originalHeight +
-                dy;
-
-
-            const limitedBottom =
-                clamp(
-                    bottom,
-                    interaction.originalY + 5,
-                    100
-                );
-
-
-            height =
-                limitedBottom -
-                interaction.originalY;
-
-        }
-
-
-        state.x =
-            x;
-
-
-        state.y =
-            y;
-
-
-        state.width =
-            width;
-
-
-        state.height =
-            height;
-
-
-        normalize();
-
-        renderBox();
-
+        );
     }
+);
 
 
-    /*
-     * =====================================================
-     * POINTER UP
-     * =====================================================
-     */
+/* =========================================================
+   RESIZE HANDLE EVENTS
+   ========================================================= */
 
-    function pointerUp(
-        event
-    ) {
+document
+    .querySelectorAll(".handle")
+    .forEach(function(handle) {
 
-        if (
-            !interaction
-        ) {
+        handle.addEventListener(
+            "pointerdown",
+            function(event) {
 
-            return;
+                const type =
+                    handle.dataset.handle;
 
-        }
-
-
-        event.preventDefault();
-
-
-        interaction = null;
-
-
-        try {
-
-            blurBox.releasePointerCapture(
-                event.pointerId
-            );
-
-        }
-
-        catch (error) {}
-
-
-        normalize();
-
-        renderBox();
-
-
-        /*
-         * Send ONLY after
-         * finger/mouse release.
-         */
-
-        sendValue();
-
-    }
-
-
-    /*
-     * =====================================================
-     * POINTER CANCEL
-     * =====================================================
-     */
-
-    function pointerCancel() {
-
-        if (
-            !interaction
-        ) {
-
-            return;
-
-        }
-
-
-        interaction = null;
-
-
-        normalize();
-
-        renderBox();
-
-        sendValue();
-
-    }
-
-
-    /*
-     * =====================================================
-     * POINTER EVENTS
-     * =====================================================
-     */
-
-    blurBox.addEventListener(
-        "pointerdown",
-        pointerDown
-    );
-
-
-    blurBox.addEventListener(
-        "pointermove",
-        pointerMove
-    );
-
-
-    blurBox.addEventListener(
-        "pointerup",
-        pointerUp
-    );
-
-
-    blurBox.addEventListener(
-        "pointercancel",
-        pointerCancel
-    );
-
-
-    /*
-     * =====================================================
-     * TOUCH PROTECTION
-     * =====================================================
-     */
-
-    blurBox.addEventListener(
-
-        "touchstart",
-
-        function (event) {
-
-            event.preventDefault();
-
-        },
-
-        {
-            passive: false
-        }
-
-    );
-
-
-    blurBox.addEventListener(
-
-        "touchmove",
-
-        function (event) {
-
-            if (interaction) {
-
-                event.preventDefault();
-
+                startInteraction(
+                    event,
+                    type
+                );
             }
+        );
 
-        },
+    });
 
-        {
-            passive: false
+
+/* =========================================================
+   GLOBAL POINTER EVENTS
+   ========================================================= */
+
+window.addEventListener(
+    "pointermove",
+    function(event) {
+
+        if (!interaction) {
+            return;
         }
 
-    );
+        updateInteraction(event);
+
+    },
+    {
+        passive: false
+    }
+);
 
 
-    /*
-     * =====================================================
-     * STREAMLIT RENDER MESSAGE
-     * =====================================================
-     */
+window.addEventListener(
+    "pointerup",
+    function(event) {
 
-    function handleRender(
-        event
-    ) {
+        endInteraction(event);
 
-        const message =
-            event.data;
+    },
+    {
+        passive: false
+    }
+);
 
+
+window.addEventListener(
+    "pointercancel",
+    function(event) {
+
+        endInteraction(event);
+
+    },
+    {
+        passive: false
+    }
+);
+
+
+/* =========================================================
+   STREAMLIT RENDER
+   ========================================================= */
+
+window.addEventListener(
+    "message",
+    function(event) {
+
+        const message = event.data;
+
+        if (!message) {
+            return;
+        }
 
         if (
-            !message
+            message.type !== RENDER
         ) {
-
             return;
-
         }
-
-
-        if (
-            message.type !==
-            RENDER_EVENT
-        ) {
-
-            return;
-
-        }
-
 
         const args =
             message.args || {};
 
+        currentArgs = args;
 
-        /*
-         * ================================================
-         * VIDEO
-         * ================================================
-         */
+
+        /* =========================
+           VIDEO SOURCE
+           ========================= */
 
         if (
             args.video_src &&
-            args.video_src !== videoSrc
+            video.src !== args.video_src
         ) {
 
-            videoSrc =
+            video.src =
                 args.video_src;
 
-
-            video.src =
-                videoSrc;
-
-
             video.load();
-
         }
 
 
         /*
-         * ================================================
-         * INITIAL BLUR POSITION
-         * ================================================
-         */
+           IMPORTANT:
 
-        if (
+           Don't reset box from Python
+           during active interaction.
+        */
 
-            typeof args.initial_x ===
-            "number" &&
+        if (!interaction) {
 
-            typeof args.initial_y ===
-            "number" &&
-
-            typeof args.initial_width ===
-            "number" &&
-
-            typeof args.initial_height ===
-            "number"
-
-        ) {
-
-            /*
-             * Don't overwrite the user's
-             * current drag position.
-             */
-
-            if (
-                !interaction
-            ) {
-
-                state.x =
-                    args.initial_x;
-
-
-                state.y =
-                    args.initial_y;
-
-
-                state.width =
-                    args.initial_width;
-
-
-                state.height =
-                    args.initial_height;
-
-
-                renderBox();
-
-            }
+            loadInitialBox(
+                args
+            );
 
         }
-
-
-        updateHeight();
 
     }
+);
 
 
-    /*
-     * =====================================================
-     * LISTEN TO STREAMLIT
-     * =====================================================
-     */
+/* =========================================================
+   VIDEO EVENTS
+   ========================================================= */
 
-    window.addEventListener(
-        "message",
-        handleRender
-    );
+video.addEventListener(
+    "loadedmetadata",
+    function() {
 
-
-    /*
-     * =====================================================
-     * WINDOW RESIZE
-     * =====================================================
-     */
-
-    window.addEventListener(
-
-        "resize",
-
-        function () {
-
-            renderBox();
-
-        }
-
-    );
-
-
-    /*
-     * =====================================================
-     * VIDEO METADATA
-     * =====================================================
-     */
-
-    video.addEventListener(
-
-        "loadedmetadata",
-
-        function () {
-
-            renderBox();
-
-            updateHeight();
-
-        }
-
-    );
-
-
-    /*
-     * =====================================================
-     * VIDEO ERROR
-     * =====================================================
-     */
-
-    video.addEventListener(
-
-        "error",
-
-        function () {
-
-            console.log(
-                "Video could not be played by browser."
-            );
-
-            updateHeight();
-
-        }
-
-    );
-
-
-    /*
-     * =====================================================
-     * RESIZE OBSERVER
-     * =====================================================
-     */
-
-    if (
-        window.ResizeObserver
-    ) {
-
-        const observer =
-            new ResizeObserver(
-
-                function () {
-
-                    updateHeight();
-
-                }
-
-            );
-
-
-        observer.observe(
-            editor
+        requestAnimationFrame(
+            setFrameHeight
         );
 
     }
+);
 
 
-    /*
-     * =====================================================
-     * INITIAL BOX
-     * =====================================================
-     */
+video.addEventListener(
+    "loadeddata",
+    function() {
 
-    renderBox();
+        requestAnimationFrame(
+            setFrameHeight
+        );
 
-
-    /*
-     * =====================================================
-     * TELL STREAMLIT COMPONENT IS READY
-     * =====================================================
-     *
-     * IMPORTANT:
-     * apiVersion: 1 is TOP LEVEL.
-     *
-     * =====================================================
-     */
-
-    setComponentReady();
+    }
+);
 
 
-    updateHeight();
+/* =========================================================
+   RESIZE OBSERVER
+   ========================================================= */
+
+if (
+    typeof ResizeObserver !== "undefined"
+) {
+
+    const observer =
+        new ResizeObserver(
+            function() {
+
+                requestAnimationFrame(
+                    setFrameHeight
+                );
+
+            }
+        );
+
+    observer.observe(editor);
+}
 
 
-})();
+/* =========================================================
+   INITIAL
+   ========================================================= */
 
-</script>
+applyBox();
 
-</body>
+setComponentReady();
 
+setTimeout(
+    setFrameHeight,
+    100
+);
+
+setTimeout(
+    setFrameHeight,
+    500
+);
+
+</script></body>
 </html>
