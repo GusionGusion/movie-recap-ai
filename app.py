@@ -682,6 +682,95 @@ with settings_col2:
     )
 
 
+# =========================================================
+# ORIGINAL SUBTITLE BLUR TOOL
+# =========================================================
+
+st.subheader(
+    "🔲 Original Subtitle Blur"
+)
+
+blur_enabled = st.checkbox(
+    "🔲 Blur Original Movie Subtitle",
+    value=False,
+    key="main_blur_enabled"
+)
+
+if blur_enabled:
+
+    st.caption(
+        "💡 Set the rectangle area where the original "
+        "movie subtitle appears. Values are percentages "
+        "of the final output video."
+    )
+
+    blur_col1, blur_col2 = st.columns(2)
+
+    with blur_col1:
+
+        blur_x = st.slider(
+            "📍 Blur X Position (%)",
+            min_value=0,
+            max_value=100,
+            value=10,
+            step=1,
+            key="main_blur_x"
+        )
+
+        blur_y = st.slider(
+            "📍 Blur Y Position (%)",
+            min_value=0,
+            max_value=100,
+            value=78,
+            step=1,
+            key="main_blur_y"
+        )
+
+    with blur_col2:
+
+        blur_width = st.slider(
+            "↔️ Blur Width (%)",
+            min_value=1,
+            max_value=100,
+            value=80,
+            step=1,
+            key="main_blur_width"
+        )
+
+        blur_height = st.slider(
+            "↕️ Blur Height (%)",
+            min_value=1,
+            max_value=100,
+            value=18,
+            step=1,
+            key="main_blur_height"
+        )
+
+    blur_strength = st.slider(
+        "💪 Blur Strength",
+        min_value=1,
+        max_value=30,
+        value=12,
+        step=1,
+        key="main_blur_strength"
+    )
+
+    st.info(
+        f"🔲 Blur Area: "
+        f"X {blur_x}% | "
+        f"Y {blur_y}% | "
+        f"W {blur_width}% | "
+        f"H {blur_height}% | "
+        f"Strength {blur_strength}"
+    )
+
+else:
+
+    st.caption(
+        "Original subtitle blur is OFF."
+    )
+
+
 st.caption(
     "⚙️ Set your preferred settings first, "
     "then press One Click."
@@ -2710,6 +2799,114 @@ if (
 
 
             # =================================================
+            # ORIGINAL SUBTITLE BLUR
+            # =================================================
+
+            video_before_subtitle = "[basevideo]"
+
+            if blur_enabled:
+
+                # Convert percentage positions to output pixels.
+                blur_x_px = int(
+                    output_width
+                    * float(blur_x)
+                    / 100.0
+                )
+
+                blur_y_px = int(
+                    output_height
+                    * float(blur_y)
+                    / 100.0
+                )
+
+                blur_width_px = int(
+                    output_width
+                    * float(blur_width)
+                    / 100.0
+                )
+
+                blur_height_px = int(
+                    output_height
+                    * float(blur_height)
+                    / 100.0
+                )
+
+                # Keep dimensions valid and inside the video.
+                blur_width_px = max(
+                    2,
+                    min(
+                        blur_width_px,
+                        output_width
+                    )
+                )
+
+                blur_height_px = max(
+                    2,
+                    min(
+                        blur_height_px,
+                        output_height
+                    )
+                )
+
+                blur_x_px = max(
+                    0,
+                    min(
+                        blur_x_px,
+                        output_width
+                        - blur_width_px
+                    )
+                )
+
+                blur_y_px = max(
+                    0,
+                    min(
+                        blur_y_px,
+                        output_height
+                        - blur_height_px
+                    )
+                )
+
+                blur_strength_value = max(
+                    1,
+                    int(blur_strength)
+                )
+
+                filter_parts.append(
+                    "[basevideo]"
+                    "split=2"
+                    "[blurbase][cleanbase]"
+                )
+
+                filter_parts.append(
+                    "[blurbase]"
+                    f"crop="
+                    f"{blur_width_px}:"
+                    f"{blur_height_px}:"
+                    f"{blur_x_px}:"
+                    f"{blur_y_px},"
+                    f"boxblur="
+                    f"luma_radius={blur_strength_value}:"
+                    f"luma_power=2:"
+                    f"chroma_radius={blur_strength_value}:"
+                    f"chroma_power=2"
+                    "[blurredarea]"
+                )
+
+                filter_parts.append(
+                    "[cleanbase]"
+                    "[blurredarea]"
+                    f"overlay="
+                    f"{blur_x_px}:"
+                    f"{blur_y_px}"
+                    "[blurredvideo]"
+                )
+
+                video_before_subtitle = (
+                    "[blurredvideo]"
+                )
+
+
+            # =================================================
             # SUBTITLE OVERLAY
             # =================================================
 
@@ -2725,7 +2922,7 @@ if (
 
 
             filter_parts.append(
-                "[basevideo]"
+                video_before_subtitle
                 + ass_filter
                 + "[vout]"
             )
@@ -2861,6 +3058,12 @@ if (
             st.info(
                 "⏳ Creating final video..."
             )
+
+            if blur_enabled:
+
+                st.info(
+                    "🔲 Original subtitle blur is enabled."
+                )
 
 
             result = subprocess.run(
