@@ -5,3 +5,4 @@ numpy
 opencv-python-headless
 google-genai
 edge-tts
+streamlit-drawable-canvas
