@@ -18,13 +18,28 @@ import streamlit.components.v1 as components
 # LOCAL INTERACTIVE BLUR VIDEO COMPONENT
 # =========================================================
 
-BLUR_VIDEO_EDITOR = components.declare_component(
-    "blur_video_editor",
-    path=os.path.join(
-        os.path.dirname(__file__),
-        "blur_component"
-    )
+BLUR_COMPONENT_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "blur_component"
 )
+
+BLUR_COMPONENT_INDEX = os.path.join(
+    BLUR_COMPONENT_DIR,
+    "index.html"
+)
+
+if os.path.isdir(BLUR_COMPONENT_DIR) and os.path.isfile(
+    BLUR_COMPONENT_INDEX
+):
+
+    BLUR_VIDEO_EDITOR = components.declare_component(
+        "blur_video_editor",
+        path=BLUR_COMPONENT_DIR
+    )
+
+else:
+
+    BLUR_VIDEO_EDITOR = None
 
 
 # =========================================================
@@ -37,7 +52,9 @@ st.set_page_config(
 )
 
 st.title("🎬 Movie Recap AI")
-st.write("Upload a movie and analyze video information.")
+st.write(
+    "Upload a movie and analyze video information."
+)
 
 
 # =========================================================
@@ -48,6 +65,7 @@ def get_audio_duration(media_file):
     """Read exact media duration using ffprobe."""
 
     try:
+
         result = subprocess.run(
             [
                 "ffprobe",
@@ -72,6 +90,7 @@ def get_audio_duration(media_file):
         return float(value)
 
     except Exception:
+
         return 0.0
 
 
@@ -86,8 +105,10 @@ def extract_audio_for_whisper(video_path):
     )
 
     if os.path.exists(audio_file):
+
         try:
             os.remove(audio_file)
+
         except Exception:
             pass
 
@@ -111,12 +132,14 @@ def extract_audio_for_whisper(video_path):
     )
 
     if result.returncode != 0:
+
         raise RuntimeError(
             "FFmpeg audio extraction failed:\n"
             + result.stderr[-3000:]
         )
 
     if not os.path.exists(audio_file):
+
         raise RuntimeError(
             "Audio file was not created."
         )
@@ -126,6 +149,7 @@ def extract_audio_for_whisper(video_path):
     )
 
     if file_size < 1000:
+
         raise RuntimeError(
             "Extracted audio file is too small."
         )
@@ -135,6 +159,7 @@ def extract_audio_for_whisper(video_path):
     )
 
     if duration <= 0:
+
         raise RuntimeError(
             "Extracted audio duration is invalid."
         )
@@ -301,6 +326,7 @@ def wrap_myanmar(
             current += " " + word
 
     if current:
+
         lines.append(
             current
         )
@@ -314,6 +340,38 @@ def wrap_myanmar(
 
     return "\\N".join(
         lines[:2]
+    )
+
+
+# =========================================================
+# CACHED BLUR VIDEO DATA URL
+# =========================================================
+
+@st.cache_data(
+    max_entries=2,
+    show_spinner=False
+)
+def make_video_data_url(
+    video_bytes,
+    mime_type
+):
+    """
+    Convert uploaded video to a browser data URL.
+
+    Cached so Streamlit does not repeatedly perform
+    Base64 encoding when the page reruns because the
+    user moves/resizes the blur box.
+    """
+
+    encoded = base64.b64encode(
+        video_bytes
+    ).decode(
+        "ascii"
+    )
+
+    return (
+        f"data:{mime_type};base64,"
+        f"{encoded}"
     )
 
 
@@ -768,7 +826,24 @@ if blur_enabled:
         "Corner / Edge ကို ဆွဲပြီး Resize လုပ်ပါ။"
     )
 
-    if (
+    if BLUR_VIDEO_EDITOR is None:
+
+        st.error(
+            "❌ Blur Video Component မတွေ့ပါ။"
+        )
+
+        st.code(
+            "blur_component/index.html",
+            language="text"
+        )
+
+        st.info(
+            "GitHub repository ထဲမှာ "
+            "`blur_component/index.html` "
+            ရှိ/မရှိ စစ်ပြီး redeploy လုပ်ပါ။"
+        )
+
+    elif (
         "uploaded_file" not in st.session_state
         or
         "video_path" not in st.session_state
@@ -784,7 +859,7 @@ if blur_enabled:
     else:
 
         # -------------------------------------------------
-        # Actual uploaded video -> Base64 Data URL
+        # ACTUAL UPLOADED VIDEO
         # -------------------------------------------------
 
         video_bytes_for_preview = (
@@ -793,26 +868,34 @@ if blur_enabled:
             ]
         )
 
-        mime_type = (
-            uploaded_file.type
-            if uploaded_file is not None
-            and uploaded_file.type
-            else "video/mp4"
-        )
+        preview_extension = os.path.splitext(
+            uploaded_file.name
+        )[1].lower()
 
-        video_base64 = base64.b64encode(
-            video_bytes_for_preview
-        ).decode(
-            "ascii"
-        )
+        mime_map = {
+            ".mp4": "video/mp4",
+            ".mov": "video/quicktime",
+            ".webm": "video/webm",
+            ".avi": "video/x-msvideo",
+            ".mkv": "video/x-matroska"
+        }
 
-        video_data_url = (
-            f"data:{mime_type};base64,"
-            f"{video_base64}"
+        mime_type = mime_map.get(
+            preview_extension,
+            uploaded_file.type or "video/mp4"
         )
 
         # -------------------------------------------------
-        # Current Blur Values
+        # Cached data URL
+        # -------------------------------------------------
+
+        video_data_url = make_video_data_url(
+            video_bytes_for_preview,
+            mime_type
+        )
+
+        # -------------------------------------------------
+        # CURRENT BLUR VALUES
         # -------------------------------------------------
 
         current_blur_x = float(
@@ -844,20 +927,23 @@ if blur_enabled:
         )
 
         # -------------------------------------------------
-        # Interactive Video Editor
+        # INTERACTIVE VIDEO EDITOR
         # -------------------------------------------------
 
         blur_result = BLUR_VIDEO_EDITOR(
             video_src=video_data_url,
+
             initial_x=current_blur_x,
             initial_y=current_blur_y,
+
             initial_width=current_blur_width,
             initial_height=current_blur_height,
+
             key="blur_video_editor"
         )
 
         # -------------------------------------------------
-        # Receive Box Position from JavaScript
+        # RECEIVE BOX POSITION
         # -------------------------------------------------
 
         if isinstance(
@@ -896,7 +982,7 @@ if blur_enabled:
                 )
 
                 # -------------------------------------------------
-                # Safety Clamp
+                # SAFETY CLAMP
                 # -------------------------------------------------
 
                 new_width = max(
@@ -953,7 +1039,7 @@ if blur_enabled:
 
 
     # ---------------------------------------------------------
-    # Blur Strength
+    # BLUR STRENGTH
     # ---------------------------------------------------------
 
     blur_strength = st.slider(
@@ -967,7 +1053,7 @@ if blur_enabled:
 
 
     # ---------------------------------------------------------
-    # Use Interactive Values
+    # USE INTERACTIVE VALUES
     # ---------------------------------------------------------
 
     blur_x = float(
@@ -1009,7 +1095,6 @@ if blur_enabled:
         f"W: {blur_width:.1f}%  |  "
         f"H: {blur_height:.1f}%"
     )
-
 
     st.info(
         f"🔲 Selected Blur Area: "
@@ -2572,7 +2657,7 @@ if (
                 freeze_time = 0
 
             # =================================================
-            # OUTPUT DIMENSIONS / FONT SETTINGS
+            # OUTPUT DIMENSIONS
             # =================================================
 
             original_width = int(
@@ -2807,10 +2892,6 @@ if (
                     )
                 )
 
-                # -------------------------------------------------
-                # Final output pixel coordinates
-                # -------------------------------------------------
-
                 blur_x_px = int(
                     output_width
                     * blur_x_value
@@ -2834,8 +2915,6 @@ if (
                     * blur_height_value
                     / 100.0
                 )
-
-                # Force even dimensions
 
                 blur_width_px = max(
                     2,
@@ -2901,11 +2980,7 @@ if (
             labels = []
 
             # -------------------------------------------------
-            # Helper: blur a scaled video stream
-            #
-            # Blur is applied BEFORE zoompan.
-            # Therefore the blur area belongs to the freeze
-            # frame and zooms together with the frame.
+            # BLUR HELPER
             # -------------------------------------------------
 
             def make_blur_filter(
@@ -2976,7 +3051,7 @@ if (
                 )
 
             # -------------------------------------------------
-            # Build Normal + Freeze segments
+            # BUILD NORMAL + FREEZE SEGMENTS
             # -------------------------------------------------
 
             if freeze_enabled:
@@ -3009,9 +3084,9 @@ if (
                         f"[normal_scaled{i}]"
                     )
 
-                    # -------------------------------------------------
-                    # Normal segment -> scale first
-                    # -------------------------------------------------
+                    # -----------------------------------------
+                    # NORMAL SEGMENT
+                    # -----------------------------------------
 
                     filter_parts.append(
                         f"[0:v]"
@@ -3026,10 +3101,6 @@ if (
                         f"{normal_scaled_label}"
                     )
 
-                    # -------------------------------------------------
-                    # Apply blur
-                    # -------------------------------------------------
-
                     make_blur_filter(
                         normal_scaled_label,
                         normal_label
@@ -3039,9 +3110,9 @@ if (
                         normal_label
                     )
 
-                    # =============================================
+                    # -----------------------------------------
                     # FREEZE + ZOOM
-                    # =============================================
+                    # -----------------------------------------
 
                     if end < video_duration:
 
@@ -3101,8 +3172,7 @@ if (
                             )
 
                         # -----------------------------------------
-                        # Extract ONE actual frame
-                        # Scale to final size
+                        # ONE ACTUAL FRAME
                         # -----------------------------------------
 
                         filter_parts.append(
@@ -3121,11 +3191,6 @@ if (
 
                         # -----------------------------------------
                         # BLUR BEFORE ZOOM
-                        #
-                        # This is important:
-                        # blur is part of the freeze frame.
-                        # Therefore ZoomPan zooms the blurred
-                        # freeze frame together with the box.
                         # -----------------------------------------
 
                         freeze_blur_label = (
@@ -3175,7 +3240,7 @@ if (
                             )
 
                         # -----------------------------------------
-                        # Zoom blurred freeze frame
+                        # ZOOM
                         # -----------------------------------------
 
                         filter_parts.append(
