@@ -243,7 +243,6 @@ def wrap_myanmar(
 ):
     """Wrap subtitle into a maximum of 2 ASS lines without dropping text."""
 
-    # FIX: \\s+ -> \s+
     text = re.sub(
         r"\s+",
         " ",
@@ -254,7 +253,9 @@ def wrap_myanmar(
         return ""
 
     words = text.split()
+
     lines = []
+
     current = ""
 
     for word in words:
@@ -329,7 +330,6 @@ def extract_frame_bytes(
 
             return None
 
-        # Keep aspect ratio.
         max_side = 768
 
         h, w = frame.shape[:2]
@@ -419,7 +419,6 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is not None:
 
-    # Store bytes only once
     video_bytes = uploaded_file.getvalue()
 
     st.session_state[
@@ -431,7 +430,6 @@ if uploaded_file is not None:
         / (1024 * 1024)
     )
 
-    # Create ONE temporary video file
     suffix = os.path.splitext(
         uploaded_file.name
     )[1]
@@ -451,7 +449,6 @@ if uploaded_file is not None:
         "video_path"
     ] = video_path
 
-    # Read video information
     cap = cv2.VideoCapture(
         video_path
     )
@@ -540,9 +537,17 @@ if uploaded_file is not None:
             "video_duration"
         ] = duration_seconds
 
-        st.session_state["video_width"] = width
-        st.session_state["video_height"] = height
-        st.session_state["video_fps"] = fps
+        st.session_state[
+            "video_width"
+        ] = width
+
+        st.session_state[
+            "video_height"
+        ] = height
+
+        st.session_state[
+            "video_fps"
+        ] = fps
 
         st.divider()
 
@@ -635,7 +640,13 @@ with settings_col2:
 
     aspect_ratio = st.selectbox(
         "📐 Output Aspect Ratio",
-        ["Original", "9:16", "16:9", "1:1", "3:4"],
+        [
+            "Original",
+            "9:16",
+            "16:9",
+            "1:1",
+            "3:4"
+        ],
         index=0,
         key="main_aspect_ratio"
     )
@@ -728,10 +739,6 @@ if uploaded_file is not None:
 
         try:
 
-            # -------------------------------------------------
-            # Extract clean 16 kHz mono audio
-            # -------------------------------------------------
-
             audio_path = extract_audio_for_whisper(
                 st.session_state[
                     "video_path"
@@ -747,17 +754,9 @@ if uploaded_file is not None:
                 f"{audio_duration:.2f} seconds"
             )
 
-            # -------------------------------------------------
-            # Load Faster-Whisper
-            # -------------------------------------------------
-
             model = load_whisper_model(
                 whisper_model
             )
-
-            # -------------------------------------------------
-            # Transcribe
-            # -------------------------------------------------
 
             segments_generator, info = model.transcribe(
                 audio_path,
@@ -964,7 +963,6 @@ if "transcript_result" in st.session_state:
                             usable_segments
                         )
 
-
                     for seg in selected_segments:
 
                         start = float(
@@ -1015,9 +1013,7 @@ if "transcript_result" in st.session_state:
                             }
                         )
 
-
                     cap.release()
-
 
                     if not scene_items:
 
@@ -1077,7 +1073,6 @@ Rules:
                             )
                         )
 
-
                         for index, item in enumerate(
                             scene_items,
                             start=1
@@ -1106,7 +1101,6 @@ Rules:
                                 )
                             )
 
-
                         response = (
                             client.models.generate_content(
                                 model="gemini-3.6-flash",
@@ -1114,13 +1108,11 @@ Rules:
                             )
                         )
 
-
                         scene_analysis = (
                             response.text
                             if response
                             else ""
                         )
-
 
                         if scene_analysis:
 
@@ -1143,7 +1135,6 @@ Rules:
                             st.error(
                                 "❌ Gemini returned no scene analysis."
                             )
-
 
             except Exception as e:
 
@@ -1443,13 +1434,11 @@ if "myanmar_recap" in st.session_state:
 
             import edge_tts
 
-
             text = (
                 st.session_state[
                     "myanmar_recap"
                 ]
             ).strip()
-
 
             if not text:
 
@@ -1469,7 +1458,6 @@ if "myanmar_recap" in st.session_state:
                 max_chars=100
             )
 
-
             if not chunks:
 
                 st.error(
@@ -1477,7 +1465,6 @@ if "myanmar_recap" in st.session_state:
                 )
 
                 st.stop()
-
 
             st.info(
                 f"📝 Narration divided into "
@@ -1493,11 +1480,9 @@ if "myanmar_recap" in st.session_state:
                 prefix="movie_recap_voice_"
             )
 
-
             raw_files = []
 
             raw_durations = []
-
 
             progress = st.progress(
                 0
@@ -1573,7 +1558,6 @@ if "myanmar_recap" in st.session_state:
 
             TTS_CROSSFADE = 0.06
 
-
             normalized_files = []
 
 
@@ -1626,7 +1610,6 @@ if "myanmar_recap" in st.session_state:
                 "combined.wav"
             )
 
-
             if len(normalized_files) == 1:
 
                 shutil.copyfile(
@@ -1647,13 +1630,11 @@ if "myanmar_recap" in st.session_state:
                         ]
                     )
 
-
                 filter_parts = []
 
                 previous_label = (
                     "[0:a]"
                 )
-
 
                 for i in range(
                     1,
@@ -1680,11 +1661,9 @@ if "myanmar_recap" in st.session_state:
                         output_label
                     )
 
-
                 filter_complex = ";".join(
                     filter_parts
                 )
-
 
                 combine_command = [
                     "ffmpeg",
@@ -1707,13 +1686,11 @@ if "myanmar_recap" in st.session_state:
                     ]
                 )
 
-
                 combine_result = subprocess.run(
                     combine_command,
                     capture_output=True,
                     text=True
                 )
-
 
                 if combine_result.returncode != 0:
 
@@ -1731,7 +1708,6 @@ if "myanmar_recap" in st.session_state:
                 "myanmar_voiceover.mp3"
             )
 
-
             convert_result = subprocess.run(
                 [
                     "ffmpeg",
@@ -1747,7 +1723,6 @@ if "myanmar_recap" in st.session_state:
                 capture_output=True,
                 text=True
             )
-
 
             if convert_result.returncode != 0:
 
@@ -1773,7 +1748,6 @@ if "myanmar_recap" in st.session_state:
 
             current_time = 0.0
 
-
             for index, chunk in enumerate(
                 chunks
             ):
@@ -1782,17 +1756,14 @@ if "myanmar_recap" in st.session_state:
                     raw_durations[index]
                 )
 
-
                 start_time = (
                     current_time
                 )
-
 
                 end_time = (
                     start_time
                     + raw_duration
                 )
-
 
                 if index < len(chunks) - 1:
 
@@ -1805,12 +1776,10 @@ if "myanmar_recap" in st.session_state:
 
                     next_time = end_time
 
-
                 next_time = min(
                     next_time,
                     voice_duration
                 )
-
 
                 if next_time <= start_time:
 
@@ -1818,7 +1787,6 @@ if "myanmar_recap" in st.session_state:
                         voice_duration,
                         start_time + 0.05
                     )
-
 
                 if start_time < voice_duration:
 
@@ -1830,12 +1798,10 @@ if "myanmar_recap" in st.session_state:
                         }
                     )
 
-
                 current_time = (
                     end_time
                     - TTS_CROSSFADE
                 )
-
 
                 current_time = max(
                     current_time,
@@ -1955,7 +1921,6 @@ if "subtitle_data" in st.session_state:
         "with the generated voiceover."
     )
 
-
     preview_text = "\n".join(
         [
             f'{item["start"]:.2f}s → '
@@ -1967,13 +1932,11 @@ if "subtitle_data" in st.session_state:
         ]
     )
 
-
     st.text_area(
         "💬 Myanmar Subtitle Preview",
         preview_text,
         height=400
     )
-
 
     st.caption(
         "ℹ️ Subtitle timing comes directly "
@@ -1997,7 +1960,6 @@ if "subtitle_data" in st.session_state:
 
     srt_lines = []
 
-
     for i, item in enumerate(
         st.session_state[
             "subtitle_data"
@@ -2017,7 +1979,6 @@ if "subtitle_data" in st.session_state:
             item["text"]
         ).strip()
 
-
         start_h = int(
             start // 3600
         )
@@ -2033,7 +1994,6 @@ if "subtitle_data" in st.session_state:
         start_ms = int(
             (start % 1) * 1000
         )
-
 
         end_h = int(
             end // 3600
@@ -2051,14 +2011,12 @@ if "subtitle_data" in st.session_state:
             (end % 1) * 1000
         )
 
-
         start_time = (
             f"{start_h:02d}:"
             f"{start_m:02d}:"
             f"{start_s:02d},"
             f"{start_ms:03d}"
         )
-
 
         end_time = (
             f"{end_h:02d}:"
@@ -2067,7 +2025,6 @@ if "subtitle_data" in st.session_state:
             f"{end_ms:03d}"
         )
 
-
         srt_lines.append(
             f"{i}\n"
             f"{start_time} --> "
@@ -2075,11 +2032,9 @@ if "subtitle_data" in st.session_state:
             f"{text}\n"
         )
 
-
     srt_content = "\n".join(
         srt_lines
     )
-
 
     st.download_button(
         "📥 Download Myanmar Subtitle (.srt)",
@@ -2148,9 +2103,7 @@ if "subtitle_data" in st.session_state:
         0
     )
 
-
     fixed_subtitles = []
-
 
     for item in st.session_state[
         "subtitle_data"
@@ -2171,11 +2124,8 @@ if "subtitle_data" in st.session_state:
             item["text"]
         ).strip()
 
-
         if not text:
-
             continue
-
 
         if subtitle_duration > 0:
 
@@ -2188,11 +2138,9 @@ if "subtitle_data" in st.session_state:
                 subtitle_duration
             )
 
-
         if end <= start:
 
             continue
-
 
         fixed_subtitles.append(
             {
@@ -2202,16 +2150,13 @@ if "subtitle_data" in st.session_state:
             }
         )
 
-
     st.session_state[
         "subtitle_data"
     ] = fixed_subtitles
 
-
     st.session_state[
         "subtitle_timing_source"
     ] = "tts_segments_crossfade"
-
 
     st.success(
         f"✅ Voiceover synced: "
@@ -2290,7 +2235,6 @@ if (
                 "movie_recap_original.mp4"
             )
 
-
             with open(
                 original_video,
                 "wb"
@@ -2327,11 +2271,9 @@ if (
                 voice_file
             )
 
-
             st.session_state[
                 "voice_duration"
             ] = voice_duration
-
 
             st.info(
                 f"🎙️ Voiceover: "
@@ -2644,19 +2586,16 @@ if (
                             f"freeze{i}"
                         )
 
-
                         frame_time = max(
                             start,
                             end - 0.10
                         )
 
 
-                        # -----------------------------------------
-                        # FIX:
-                        # Use the selected freeze_duration
-                        # instead of always using 60 frames.
-                        # 30 FPS × duration = frame count.
-                        # -----------------------------------------
+                        # -------------------------------------------------
+                        # Freeze duration -> frames
+                        # 30 FPS
+                        # -------------------------------------------------
 
                         freeze_frames = max(
                             2,
