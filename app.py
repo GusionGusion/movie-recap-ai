@@ -241,50 +241,35 @@ def wrap_myanmar(
     text,
     max_chars=24
 ):
-    """Wrap Myanmar subtitle into maximum 3 lines."""
+    """Wrap subtitle into a maximum of 2 ASS lines without dropping text."""
 
-    words = str(text).split()
+    text = re.sub(r"\\s+", " ", str(text).strip())
 
-    if not words:
+    if not text:
         return ""
 
+    words = text.split()
     lines = []
-
     current = ""
 
     for word in words:
+        candidate = word if not current else current + " " + word
 
-        test = (
-            word
-            if not current
-            else current + " " + word
-        )
-
-        if len(test) <= max_chars:
-
-            current = test
-
-        else:
-
-            if current:
-
-                lines.append(
-                    current
-                )
-
+        if len(candidate) <= max_chars or not current:
+            current = candidate
+        elif len(lines) == 0:
+            lines.append(current)
             current = word
+        else:
+            current += " " + word
 
     if current:
+        lines.append(current)
 
-        lines.append(
-            current
-        )
+    if len(lines) > 2:
+        lines = [lines[0], " ".join(lines[1:])]
 
-    if len(lines) > 3:
-
-        lines = lines[:3]
-
-    return "\\N".join(lines)
+    return "\\N".join(lines[:2])
 
 
 # =========================================================
@@ -526,6 +511,10 @@ if uploaded_file is not None:
             "video_duration"
         ] = duration_seconds
 
+        st.session_state["video_width"] = width
+        st.session_state["video_height"] = height
+        st.session_state["video_fps"] = fps
+
         st.divider()
 
         st.subheader(
@@ -613,6 +602,35 @@ with settings_col2:
         value=2.0,
         step=0.5,
         key="main_freeze_duration"
+    )
+
+    aspect_ratio = st.selectbox(
+        "📐 Output Aspect Ratio",
+        ["Original", "9:16", "16:9", "1:1", "3:4"],
+        index=0,
+        key="main_aspect_ratio"
+    )
+
+    subtitle_font = st.selectbox(
+        "🔤 Subtitle Font",
+        ["Noto Sans Myanmar", "Pyidaungsu", "Myanmar Text", "Custom Font"],
+        index=0,
+        key="main_subtitle_font"
+    )
+
+    custom_font_file = st.file_uploader(
+        "📁 Upload Custom Font (.ttf/.otf)",
+        type=["ttf", "otf"],
+        key="main_custom_font"
+    )
+
+    subtitle_size = st.slider(
+        "🔠 Subtitle Font Size",
+        min_value=20,
+        max_value=100,
+        value=50,
+        step=1,
+        key="main_subtitle_size"
     )
 
 
@@ -2312,18 +2330,51 @@ if (
 
 
             # =================================================
+            # OUTPUT DIMENSIONS / FONT SETTINGS
+            # =================================================
+
+            original_width = int(st.session_state.get("video_width", 576))
+            original_height = int(st.session_state.get("video_height", 1024))
+
+            if aspect_ratio == "Original":
+                output_width = max(2, original_width - (original_width % 2))
+                output_height = max(2, original_height - (original_height % 2))
+            elif aspect_ratio == "9:16":
+                output_width, output_height = 576, 1024
+            elif aspect_ratio == "16:9":
+                output_width, output_height = 1024, 576
+            elif aspect_ratio == "1:1":
+                output_width, output_height = 768, 768
+            else:
+                output_width, output_height = 768, 1024
+
+            selected_font_name = subtitle_font
+            font_dir = None
+
+            if subtitle_font == "Custom Font" and custom_font_file is not None:
+                font_dir = os.path.join(tempfile.gettempdir(), "movie_recap_fonts")
+                os.makedirs(font_dir, exist_ok=True)
+                custom_font_path = os.path.join(font_dir, custom_font_file.name)
+                with open(custom_font_path, "wb") as font_handle:
+                    font_handle.write(custom_font_file.getvalue())
+                selected_font_name = "CustomFont"
+
+            subtitle_wrap_chars = 24 if output_height >= output_width else 42
+            subtitle_margin_v = max(40, int(output_height * 0.055))
+
+            # =================================================
             # ASS SUBTITLES
             # =================================================
 
-            ass_content = """[Script Info]
+            ass_content = f"""[Script Info]
 ScriptType: v4.00+
-PlayResX: 576
-PlayResY: 1024
+PlayResX: {output_width}
+PlayResY: {output_height}
 ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Myanmar,Noto Sans Myanmar,28,&H00FFFFFF,&H00FFFFFF,&H00000000,&H99000000,0,0,0,0,100,100,0,0,1,2,1,2,40,40,55,1
+Style: Myanmar,{selected_font_name},{subtitle_size},&H0000FFFF,&H0000FFFF,&H00000000,&H99000000,0,0,0,0,100,100,0,0,1,2,1,2,40,40,{subtitle_margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -2350,7 +2401,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 text = wrap_myanmar(
                     item["text"],
-                    24
+                    subtitle_wrap_chars
                 )
 
                 text = text.replace(
@@ -2433,7 +2484,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         f"start={start}:"
                         f"end={end},"
                         f"setpts=PTS-STARTPTS,"
-                        f"scale=576:1024,"
+                        f"scale={output_width}:{output_height},"
                         f"setsar=1"
                         f"[{normal_label}]"
                     )
@@ -2472,7 +2523,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             f"end={frame_time + 0.0334},"
                             f"setpts=PTS-STARTPTS,"
                             f"select='eq(n,0)',"
-                            f"scale=576:1024,"
+                            f"scale={output_width}:{output_height},"
                             f"setsar=1,"
                             f"zoompan="
                             f"z='if(lte(on,29),"
@@ -2481,7 +2532,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             f"d=60:"
                             f"x='iw/2-(iw/zoom/2)':"
                             f"y='ih/2-(ih/zoom/2)':"
-                            f"s=576x1024:"
+                            f"s={output_width}x{output_height}:"
                             f"fps=30"
                             f"[{freeze_label}]"
                         )
@@ -2522,7 +2573,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 filter_parts.append(
                     "[0:v]"
-                    "scale=576:1024,"
+                    f"scale={output_width}:{output_height},"
                     "setsar=1,"
                     "format=yuv420p"
                     "[basevideo]"
@@ -2533,10 +2584,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             # SUBTITLE OVERLAY
             # =================================================
 
+            ass_filter = f"ass={ass_file}"
+            if font_dir:
+                ass_filter += f":fontsdir={font_dir}"
+
             filter_parts.append(
                 "[basevideo]"
-                f"ass={ass_file}"
-                "[vout]"
+                + ass_filter
+                + "[vout]"
             )
 
 
