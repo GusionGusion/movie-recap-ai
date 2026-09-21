@@ -10,6 +10,36 @@ import asyncio
 import json
 import re
 import shutil
+import base64
+import streamlit.components.v1 as components
+
+
+# =========================================================
+# LOCAL INTERACTIVE BLUR VIDEO COMPONENT
+# =========================================================
+
+BLUR_COMPONENT_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "blur_component"
+)
+
+BLUR_COMPONENT_INDEX = os.path.join(
+    BLUR_COMPONENT_DIR,
+    "index.html"
+)
+
+if os.path.isdir(BLUR_COMPONENT_DIR) and os.path.isfile(
+    BLUR_COMPONENT_INDEX
+):
+
+    BLUR_VIDEO_EDITOR = components.declare_component(
+        "blur_video_editor",
+        path=BLUR_COMPONENT_DIR
+    )
+
+else:
+
+    BLUR_VIDEO_EDITOR = None
 
 
 # =========================================================
@@ -22,7 +52,9 @@ st.set_page_config(
 )
 
 st.title("🎬 Movie Recap AI")
-st.write("Upload a movie and analyze video information.")
+st.write(
+    "Upload a movie and analyze video information."
+)
 
 
 # =========================================================
@@ -33,6 +65,7 @@ def get_audio_duration(media_file):
     """Read exact media duration using ffprobe."""
 
     try:
+
         result = subprocess.run(
             [
                 "ffprobe",
@@ -57,6 +90,7 @@ def get_audio_duration(media_file):
         return float(value)
 
     except Exception:
+
         return 0.0
 
 
@@ -71,8 +105,10 @@ def extract_audio_for_whisper(video_path):
     )
 
     if os.path.exists(audio_file):
+
         try:
             os.remove(audio_file)
+
         except Exception:
             pass
 
@@ -96,12 +132,14 @@ def extract_audio_for_whisper(video_path):
     )
 
     if result.returncode != 0:
+
         raise RuntimeError(
             "FFmpeg audio extraction failed:\n"
             + result.stderr[-3000:]
         )
 
     if not os.path.exists(audio_file):
+
         raise RuntimeError(
             "Audio file was not created."
         )
@@ -111,6 +149,7 @@ def extract_audio_for_whisper(video_path):
     )
 
     if file_size < 1000:
+
         raise RuntimeError(
             "Extracted audio file is too small."
         )
@@ -120,6 +159,7 @@ def extract_audio_for_whisper(video_path):
     )
 
     if duration <= 0:
+
         raise RuntimeError(
             "Extracted audio duration is invalid."
         )
@@ -243,33 +283,192 @@ def wrap_myanmar(
 ):
     """Wrap subtitle into a maximum of 2 ASS lines without dropping text."""
 
-    text = re.sub(r"\\s+", " ", str(text).strip())
+    text = re.sub(
+        r"\s+",
+        " ",
+        str(text).strip()
+    )
 
     if not text:
         return ""
 
     words = text.split()
+
     lines = []
+
     current = ""
 
     for word in words:
-        candidate = word if not current else current + " " + word
 
-        if len(candidate) <= max_chars or not current:
+        candidate = (
+            word
+            if not current
+            else current + " " + word
+        )
+
+        if (
+            len(candidate) <= max_chars
+            or not current
+        ):
+
             current = candidate
+
         elif len(lines) == 0:
-            lines.append(current)
+
+            lines.append(
+                current
+            )
+
             current = word
+
         else:
+
             current += " " + word
 
     if current:
-        lines.append(current)
+
+        lines.append(
+            current
+        )
 
     if len(lines) > 2:
-        lines = [lines[0], " ".join(lines[1:])]
 
-    return "\\N".join(lines[:2])
+        lines = [
+            lines[0],
+            " ".join(lines[1:])
+        ]
+
+    return "\\N".join(
+        lines[:2]
+    )
+
+
+# =========================================================
+# POST CAPTION CLEANER
+# =========================================================
+
+def clean_post_caption(text):
+    """
+    Clean Gemini generated social-media caption.
+
+    Maximum 3 non-empty lines.
+    Removes accidental labels such as:
+    Caption:
+    Post Caption:
+    Title:
+    """
+
+    if not text:
+
+        return ""
+
+    text = str(text).replace(
+        "\r\n",
+        "\n"
+    ).replace(
+        "\r",
+        "\n"
+    ).strip()
+
+    # Remove markdown code fences
+    text = re.sub(
+        r"^```(?:text|caption|markdown)?\s*",
+        "",
+        text,
+        flags=re.IGNORECASE
+    )
+
+    text = re.sub(
+        r"\s*```$",
+        "",
+        text
+    )
+
+    # Remove common accidental labels
+    text = re.sub(
+        r"^\s*(?:caption|post\s*caption|title)\s*[:：-]\s*",
+        "",
+        text,
+        flags=re.IGNORECASE
+    )
+
+    # Remove surrounding quotation marks
+    text = text.strip()
+
+    if (
+        len(text) >= 2
+        and text[0] in "\"“‘"
+        and text[-1] in "\"”’"
+    ):
+
+        text = text[1:-1].strip()
+
+    # Keep only non-empty lines
+    lines = []
+
+    for line in text.split("\n"):
+
+        line = re.sub(
+            r"\s+",
+            " ",
+            line
+        ).strip()
+
+        if not line:
+            continue
+
+        # Remove accidental numbered-list prefix
+        line = re.sub(
+            r"^\s*\d+[\.\)]\s*",
+            "",
+            line
+        )
+
+        line = re.sub(
+            r"^\s*[-•]\s*",
+            "",
+            line
+        )
+
+        if line:
+            lines.append(line)
+
+    # Maximum 3 lines
+    lines = lines[:3]
+
+    return "\n".join(lines).strip()
+
+
+# =========================================================
+# CACHED BLUR VIDEO DATA URL
+# =========================================================
+
+@st.cache_data(
+    max_entries=2,
+    show_spinner=False
+)
+def make_video_data_url(
+    video_bytes,
+    mime_type
+):
+    """
+    Convert uploaded video to a browser data URL.
+
+    Cached so Streamlit does not repeatedly perform
+    Base64 encoding when the page reruns because the
+    user moves/resizes the blur box.
+    """
+
+    encoded = base64.b64encode(
+        video_bytes
+    ).decode(
+        "ascii"
+    )
+
+    return (
+        f"data:{mime_type};base64,"
+        f"{encoded}"
+    )
 
 
 # =========================================================
@@ -300,7 +499,6 @@ def extract_frame_bytes(
 
             return None
 
-        # Keep aspect ratio.
         max_side = 768
 
         h, w = frame.shape[:2]
@@ -390,7 +588,6 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is not None:
 
-    # Store bytes only once
     video_bytes = uploaded_file.getvalue()
 
     st.session_state[
@@ -402,7 +599,6 @@ if uploaded_file is not None:
         / (1024 * 1024)
     )
 
-    # Create ONE temporary video file
     suffix = os.path.splitext(
         uploaded_file.name
     )[1]
@@ -422,7 +618,6 @@ if uploaded_file is not None:
         "video_path"
     ] = video_path
 
-    # Read video information
     cap = cv2.VideoCapture(
         video_path
     )
@@ -511,9 +706,17 @@ if uploaded_file is not None:
             "video_duration"
         ] = duration_seconds
 
-        st.session_state["video_width"] = width
-        st.session_state["video_height"] = height
-        st.session_state["video_fps"] = fps
+        st.session_state[
+            "video_width"
+        ] = width
+
+        st.session_state[
+            "video_height"
+        ] = height
+
+        st.session_state[
+            "video_fps"
+        ] = fps
 
         st.divider()
 
@@ -606,21 +809,35 @@ with settings_col2:
 
     aspect_ratio = st.selectbox(
         "📐 Output Aspect Ratio",
-        ["Original", "9:16", "16:9", "1:1", "3:4"],
+        [
+            "Original",
+            "9:16",
+            "16:9",
+            "1:1",
+            "3:4"
+        ],
         index=0,
         key="main_aspect_ratio"
     )
 
     subtitle_font = st.selectbox(
         "🔤 Subtitle Font",
-        ["Noto Sans Myanmar", "Pyidaungsu", "Myanmar Text", "Custom Font"],
+        [
+            "Noto Sans Myanmar",
+            "Pyidaungsu",
+            "Myanmar Text",
+            "Custom Font"
+        ],
         index=0,
         key="main_subtitle_font"
     )
 
     custom_font_file = st.file_uploader(
         "📁 Upload Custom Font (.ttf/.otf)",
-        type=["ttf", "otf"],
+        type=[
+            "ttf",
+            "otf"
+        ],
         key="main_custom_font"
     )
 
@@ -631,6 +848,363 @@ with settings_col2:
         value=50,
         step=1,
         key="main_subtitle_size"
+    )
+
+
+# =========================================================
+# ORIGINAL SUBTITLE BLUR TOOL
+# =========================================================
+
+st.subheader(
+    "🔲 Original Subtitle Blur"
+)
+
+blur_enabled = st.checkbox(
+    "🔲 Blur Original Movie Subtitle",
+    value=False,
+    key="main_blur_enabled"
+)
+
+
+# =========================================================
+# INITIAL BLUR STATE
+# =========================================================
+
+if uploaded_file is not None:
+
+    blur_source_key = (
+        uploaded_file.name
+        + "_"
+        + str(uploaded_file.size)
+    )
+
+    if (
+        st.session_state.get(
+            "_blur_source_key"
+        )
+        != blur_source_key
+    ):
+
+        st.session_state[
+            "_blur_source_key"
+        ] = blur_source_key
+
+        st.session_state[
+            "main_blur_x_value"
+        ] = 10.0
+
+        st.session_state[
+            "main_blur_y_value"
+        ] = 78.0
+
+        st.session_state[
+            "main_blur_width_value"
+        ] = 80.0
+
+        st.session_state[
+            "main_blur_height_value"
+        ] = 18.0
+
+
+# =========================================================
+# INTERACTIVE BLUR VIDEO PREVIEW
+# =========================================================
+
+if blur_enabled:
+
+    st.markdown(
+        "### 🎯 Blur Box Preview"
+    )
+
+    st.caption(
+        "🎥 ဒီနေရာမှာ Uploaded Video ကို တကယ်ကြည့်နိုင်ပါတယ်။ "
+        "📱 Mobile မှာ Blur Box အလယ်ကို လက်နဲ့ဆွဲပြီး Move လုပ်ပါ။ "
+        "Corner / Edge ကို ဆွဲပြီး Resize လုပ်ပါ။"
+    )
+
+    if BLUR_VIDEO_EDITOR is None:
+
+        st.error(
+            "❌ Blur Video Component မတွေ့ပါ။"
+        )
+
+        st.code(
+            "blur_component/index.html",
+            language="text"
+        )
+
+        st.info(
+            "Make sure blur_component/index.html "
+            "exists in your GitHub repository, "
+            "then redeploy the app."
+        )
+
+    elif (
+        "uploaded_file" not in st.session_state
+        or
+        "video_path" not in st.session_state
+        or not os.path.exists(
+            st.session_state["video_path"]
+        )
+    ):
+
+        st.warning(
+            "⚠️ Blur Preview အတွက် video အရင် upload လုပ်ပါ။"
+        )
+
+    else:
+
+        # -------------------------------------------------
+        # ACTUAL UPLOADED VIDEO
+        # -------------------------------------------------
+
+        video_bytes_for_preview = (
+            st.session_state[
+                "uploaded_file"
+            ]
+        )
+
+        preview_extension = os.path.splitext(
+            uploaded_file.name
+        )[1].lower()
+
+        mime_map = {
+            ".mp4": "video/mp4",
+            ".mov": "video/quicktime",
+            ".webm": "video/webm",
+            ".avi": "video/x-msvideo",
+            ".mkv": "video/x-matroska"
+        }
+
+        mime_type = mime_map.get(
+            preview_extension,
+            uploaded_file.type or "video/mp4"
+        )
+
+        # -------------------------------------------------
+        # Cached data URL
+        # -------------------------------------------------
+
+        video_data_url = make_video_data_url(
+            video_bytes_for_preview,
+            mime_type
+        )
+
+        # -------------------------------------------------
+        # CURRENT BLUR VALUES
+        # -------------------------------------------------
+
+        current_blur_x = float(
+            st.session_state.get(
+                "main_blur_x_value",
+                10.0
+            )
+        )
+
+        current_blur_y = float(
+            st.session_state.get(
+                "main_blur_y_value",
+                78.0
+            )
+        )
+
+        current_blur_width = float(
+            st.session_state.get(
+                "main_blur_width_value",
+                80.0
+            )
+        )
+
+        current_blur_height = float(
+            st.session_state.get(
+                "main_blur_height_value",
+                18.0
+            )
+        )
+
+        # -------------------------------------------------
+        # INTERACTIVE VIDEO EDITOR
+        # -------------------------------------------------
+
+        blur_result = BLUR_VIDEO_EDITOR(
+            video_src=video_data_url,
+
+            initial_x=current_blur_x,
+            initial_y=current_blur_y,
+
+            initial_width=current_blur_width,
+            initial_height=current_blur_height,
+
+            key="blur_video_editor"
+        )
+
+        # -------------------------------------------------
+        # RECEIVE BOX POSITION
+        # -------------------------------------------------
+
+        if isinstance(
+            blur_result,
+            dict
+        ):
+
+            try:
+
+                new_x = float(
+                    blur_result.get(
+                        "x",
+                        current_blur_x
+                    )
+                )
+
+                new_y = float(
+                    blur_result.get(
+                        "y",
+                        current_blur_y
+                    )
+                )
+
+                new_width = float(
+                    blur_result.get(
+                        "width",
+                        current_blur_width
+                    )
+                )
+
+                new_height = float(
+                    blur_result.get(
+                        "height",
+                        current_blur_height
+                    )
+                )
+
+                # -------------------------------------------------
+                # SAFETY CLAMP
+                # -------------------------------------------------
+
+                new_width = max(
+                    1.0,
+                    min(
+                        100.0,
+                        new_width
+                    )
+                )
+
+                new_height = max(
+                    1.0,
+                    min(
+                        100.0,
+                        new_height
+                    )
+                )
+
+                new_x = max(
+                    0.0,
+                    min(
+                        100.0 - new_width,
+                        new_x
+                    )
+                )
+
+                new_y = max(
+                    0.0,
+                    min(
+                        100.0 - new_height,
+                        new_y
+                    )
+                )
+
+                st.session_state[
+                    "main_blur_x_value"
+                ] = new_x
+
+                st.session_state[
+                    "main_blur_y_value"
+                ] = new_y
+
+                st.session_state[
+                    "main_blur_width_value"
+                ] = new_width
+
+                st.session_state[
+                    "main_blur_height_value"
+                ] = new_height
+
+            except Exception:
+
+                pass
+
+
+    # ---------------------------------------------------------
+    # BLUR STRENGTH
+    # ---------------------------------------------------------
+
+    blur_strength = st.slider(
+        "💪 Blur Strength",
+        min_value=1,
+        max_value=30,
+        value=12,
+        step=1,
+        key="main_blur_strength"
+    )
+
+
+    # ---------------------------------------------------------
+    # USE INTERACTIVE VALUES
+    # ---------------------------------------------------------
+
+    blur_x = float(
+        st.session_state.get(
+            "main_blur_x_value",
+            10.0
+        )
+    )
+
+    blur_y = float(
+        st.session_state.get(
+            "main_blur_y_value",
+            78.0
+        )
+    )
+
+    blur_width = float(
+        st.session_state.get(
+            "main_blur_width_value",
+            80.0
+        )
+    )
+
+    blur_height = float(
+        st.session_state.get(
+            "main_blur_height_value",
+            18.0
+        )
+    )
+
+
+    st.success(
+        "✅ Blur Box position saved."
+    )
+
+    st.caption(
+        f"X: {blur_x:.1f}%  |  "
+        f"Y: {blur_y:.1f}%  |  "
+        f"W: {blur_width:.1f}%  |  "
+        f"H: {blur_height:.1f}%"
+    )
+
+    st.info(
+        f"🔲 Selected Blur Area: "
+        f"X {blur_x:.1f}% | "
+        f"Y {blur_y:.1f}% | "
+        f"W {blur_width:.1f}% | "
+        f"H {blur_height:.1f}% | "
+        f"Strength {blur_strength}"
+    )
+
+else:
+
+    st.caption(
+        "Original subtitle blur is OFF."
     )
 
 
@@ -691,10 +1265,6 @@ if uploaded_file is not None:
 
         try:
 
-            # -------------------------------------------------
-            # Extract clean 16 kHz mono audio
-            # -------------------------------------------------
-
             audio_path = extract_audio_for_whisper(
                 st.session_state[
                     "video_path"
@@ -710,17 +1280,9 @@ if uploaded_file is not None:
                 f"{audio_duration:.2f} seconds"
             )
 
-            # -------------------------------------------------
-            # Load Faster-Whisper
-            # -------------------------------------------------
-
             model = load_whisper_model(
                 whisper_model
             )
-
-            # -------------------------------------------------
-            # Transcribe
-            # -------------------------------------------------
 
             segments_generator, info = model.transcribe(
                 audio_path,
@@ -775,11 +1337,6 @@ if uploaded_file is not None:
                     for seg in transcript_segments
                 ]
             )
-
-            # -------------------------------------------------
-            # Convert to same structure expected by
-            # Scene Analysis
-            # -------------------------------------------------
 
             result = {
                 "text": transcript_text,
@@ -868,10 +1425,6 @@ if "transcript_result" in st.session_state:
                     ]
                 )
 
-                # -------------------------------------------------
-                # ACTUAL VIDEO FRAME ANALYSIS
-                # -------------------------------------------------
-
                 cap = cv2.VideoCapture(
                     video_path
                 )
@@ -886,12 +1439,6 @@ if "transcript_result" in st.session_state:
 
                     scene_items = []
 
-                    # One actual video frame for each
-                    # timestamped Faster-Whisper segment.
-                    #
-                    # Limit to 24 frames to keep Gemini request
-                    # reasonable. If there are more segments,
-                    # sample them chronologically.
                     usable_segments = [
                         seg
                         for seg in segments
@@ -942,7 +1489,6 @@ if "transcript_result" in st.session_state:
                             usable_segments
                         )
 
-
                     for seg in selected_segments:
 
                         start = float(
@@ -967,7 +1513,6 @@ if "transcript_result" in st.session_state:
                         ).strip()
 
                         if not text:
-
                             continue
 
                         timestamp = (
@@ -982,7 +1527,6 @@ if "transcript_result" in st.session_state:
                         )
 
                         if frame_bytes is None:
-
                             continue
 
                         scene_items.append(
@@ -995,9 +1539,7 @@ if "transcript_result" in st.session_state:
                             }
                         )
 
-
                     cap.release()
-
 
                     if not scene_items:
 
@@ -1006,10 +1548,6 @@ if "transcript_result" in st.session_state:
                         )
 
                     else:
-
-                        # -------------------------------------------------
-                        # ONE DIRECT GEMINI SCENE ANALYSIS
-                        # -------------------------------------------------
 
                         prompt = """
 You are analyzing an actual movie/video.
@@ -1051,9 +1589,7 @@ Rules:
   keep it only in Dialogue and do not describe it as a visual event.
 - Keep the output short and natural.
 - The purpose is to make the later recap match the actual video.
-
 """
-
 
                         contents = []
 
@@ -1062,7 +1598,6 @@ Rules:
                                 text=prompt
                             )
                         )
-
 
                         for index, item in enumerate(
                             scene_items,
@@ -1092,7 +1627,6 @@ Rules:
                                 )
                             )
 
-
                         response = (
                             client.models.generate_content(
                                 model="gemini-3.6-flash",
@@ -1100,13 +1634,11 @@ Rules:
                             )
                         )
 
-
                         scene_analysis = (
                             response.text
                             if response
                             else ""
                         )
-
 
                         if scene_analysis:
 
@@ -1130,17 +1662,12 @@ Rules:
                                 "❌ Gemini returned no scene analysis."
                             )
 
-
             except Exception as e:
 
                 st.error(
                     f"❌ Scene Analysis failed: {e}"
                 )
 
-
-# ---------------------------------------------------------
-# DISPLAY DIRECT SCENE ANALYSIS
-# ---------------------------------------------------------
 
 if "ai_scene_analysis" in st.session_state:
 
@@ -1227,9 +1754,21 @@ Scene Analysis:
                 )
             )
 
+            recap_text = (
+                response.text
+                if response
+                else ""
+            )
+
+            if not recap_text.strip():
+
+                raise RuntimeError(
+                    "Gemini returned an empty recap script."
+                )
+
             st.session_state[
                 "recap_script"
-            ] = response.text
+            ] = recap_text
 
             st.success(
                 "✅ Movie Recap Script generated!"
@@ -1301,6 +1840,8 @@ Rules:
 - Do not add English.
 - Write only the Myanmar narration.
 - Make it natural for voiceover.
+- Use "ဒယ်" instead of "တယ်" at sentence endings
+  where it sounds natural.
 
 English Recap:
 
@@ -1314,7 +1855,17 @@ English Recap:
                 )
             )
 
-            myanmar_text = response.text
+            myanmar_text = (
+                response.text
+                if response
+                else ""
+            )
+
+            if not myanmar_text.strip():
+
+                raise RuntimeError(
+                    "Gemini returned an empty Myanmar recap."
+                )
 
             st.session_state[
                 "myanmar_recap"
@@ -1346,11 +1897,17 @@ st.divider()
 
 
 # =========================================================
-# SOCIAL POST CAPTION
+# SOCIAL MEDIA POST CAPTION
 # =========================================================
 
 st.subheader(
     "📱 Post Caption"
+)
+
+st.caption(
+    "🎬 Movie Recap ဖြစ်ဖြစ် 🐾 Animal Documentary ဖြစ်ဖြစ် "
+    "Video Content ကိုအခြေခံပြီး Post တင်ရန် Caption ရေးပေးပါမယ်။ "
+    "ဒီ Caption ကို Video ထဲမှာ ထည့်မှာမဟုတ်ပါ။"
 )
 
 
@@ -1370,137 +1927,121 @@ if "ai_scene_analysis" in st.session_state:
                 api_key=api_key
             )
 
-            scene_analysis = (
-                st.session_state[
-                    "ai_scene_analysis"
-                ]
+            scene_analysis_for_caption = (
+                st.session_state.get(
+                    "ai_scene_analysis",
+                    ""
+                )
             )
 
-            recap_script = (
+            recap_for_caption = (
                 st.session_state.get(
                     "recap_script",
                     ""
                 )
             )
 
-            myanmar_recap = (
+            myanmar_for_caption = (
                 st.session_state.get(
                     "myanmar_recap",
                     ""
                 )
             )
 
-            prompt = f"""
-Create a compelling social media post caption/title
-for the video described below.
+            caption_prompt = f"""
+You are a professional social-media post caption writer.
 
-The same tool is used for BOTH:
-- Movie Recap videos
-- Animal Documentary / wildlife videos
+Create ONE compelling Myanmar-language caption
+for the uploaded video.
 
-Automatically understand which type of content this is
-from the actual information provided.
+The video can be either:
 
-IMPORTANT RULES:
+1. A movie recap
+OR
+2. An animal / wildlife documentary.
 
+Automatically understand the content type from the
+provided scene analysis and narration.
+
+IMPORTANT:
+The caption will be used ONLY as a SOCIAL MEDIA POST TITLE/CAPTION.
+
+It must NOT be:
+- a video subtitle
+- an on-screen video text
+- a voiceover
+- part of the final video
+
+CAPTION REQUIREMENTS:
+
+- Minimum 1 line.
+- Maximum 3 lines.
 - Write in natural Myanmar Burmese.
-- Minimum 1 line and maximum 3 lines.
-- Make it interesting enough to make people want to watch.
+- Make it interesting and attention-grabbing.
 - Match the actual video content.
-- Use only information supported by the Scene Analysis,
-  Recap Script, or Myanmar Recap.
-- Do not invent characters, animals, events, places,
-  abilities, facts, or outcomes.
-- Do not make false or misleading claims.
-- For Movie Recap: create curiosity and suspense without
-  unnecessarily revealing the ending or major twist.
-- For Animal Documentary: highlight a genuinely shown
-  interesting behavior, ability, survival skill, or fact.
-- Keep it concise and suitable as a Facebook / TikTok /
-  YouTube Shorts post title or caption.
-- Emojis are allowed, but use only a few when appropriate.
-- Do not add hashtags.
-- Do not add a heading such as "Caption:".
-- Do not add quotation marks around the caption.
+- Create curiosity without misleading the audience.
+- Do NOT invent facts, events, characters, animals,
+  locations, abilities, or outcomes.
+- Do NOT claim something that is not supported by the
+  provided content.
+- Do NOT reveal a major movie ending or twist if this
+  is a movie recap.
+- For movie recaps, focus on suspense, mystery,
+  emotional stakes, or an intriguing situation.
+- For animal documentaries, focus on a surprising
+  behavior, ability, survival skill, or interesting
+  fact that is actually supported by the content.
+- Keep it concise.
+- Make it suitable for Facebook, TikTok, YouTube Shorts,
+  Instagram Reels, or similar social-media posts.
+- You may use 1–2 suitable emojis.
+- Do NOT use hashtags.
+- Do NOT add a heading.
+- Do NOT write "Caption:".
+- Do NOT write an explanation.
 - Return ONLY the final caption.
+- Do not use quotation marks around the caption.
 
 Scene Analysis:
+{scene_analysis_for_caption}
 
-{scene_analysis}
-
-Recap Script:
-
-{recap_script}
+English Recap:
+{recap_for_caption}
 
 Myanmar Recap:
-
-{myanmar_recap}
+{myanmar_for_caption}
 """
 
             response = (
                 client.models.generate_content(
                     model="gemini-3.6-flash",
-                    contents=prompt
+                    contents=caption_prompt
                 )
             )
 
-            caption = (
+            raw_caption = (
                 response.text
                 if response
                 else ""
             )
 
-            # -------------------------------------------------
-            # Clean model formatting without changing content.
-            # Keep the caption between 1 and 3 non-empty lines.
-            # -------------------------------------------------
-
-            caption = caption.strip()
-
-            caption = re.sub(
-                r"^\s*(Caption|Post Caption|Title)\s*:\s*",
-                "",
-                caption,
-                flags=re.IGNORECASE
+            post_caption = clean_post_caption(
+                raw_caption
             )
 
-            caption = caption.replace(
-                "\r\n",
-                "\n"
+            if not post_caption:
+
+                raise RuntimeError(
+                    "Gemini returned an empty post caption."
+                )
+
+            st.session_state[
+                "post_caption"
+            ] = post_caption
+
+            st.success(
+                "✅ Post Caption generated!"
             )
-
-            lines = []
-
-            for line in caption.split("\n"):
-
-                line = re.sub(
-                    r"\s+",
-                    " ",
-                    line
-                ).strip()
-
-                if line:
-                    lines.append(line)
-
-            caption = "\n".join(
-                lines[:3]
-            ).strip()
-
-            if caption:
-
-                st.session_state[
-                    "post_caption"
-                ] = caption
-
-                st.success(
-                    "✅ Post Caption generated!"
-                )
-
-            else:
-
-                st.error(
-                    "❌ Gemini returned an empty caption."
-                )
 
         except Exception as e:
 
@@ -1508,15 +2049,28 @@ Myanmar Recap:
                 f"❌ Post Caption generation failed: {e}"
             )
 
+else:
+
+    st.info(
+        "ℹ️ Scene Analysis ကို အရင် Generate လုပ်ပြီးမှ "
+        "Post Caption ဖန်တီးနိုင်ပါတယ်။"
+    )
+
 
 if "post_caption" in st.session_state:
 
     st.text_area(
-        "📱 Copy this caption for your post",
+        "📱 Copy this Caption for your Post",
         st.session_state[
             "post_caption"
         ],
-        height=120
+        height=130,
+        key="post_caption_display"
+    )
+
+    st.caption(
+        "📌 ဒီစာသားကို Facebook / TikTok / YouTube Shorts / "
+        "Instagram Post Title/Caption အဖြစ် Copy လုပ်သုံးနိုင်ပါတယ်။"
     )
 
 
@@ -1534,10 +2088,6 @@ st.subheader(
 
 if "myanmar_recap" in st.session_state:
 
-    # =====================================================
-    # SELECT VOICE
-    # =====================================================
-
     if voice_gender.startswith("👩"):
 
         selected_voice = (
@@ -1549,11 +2099,6 @@ if "myanmar_recap" in st.session_state:
         selected_voice = (
             "my-MM-ThihaNeural"
         )
-
-
-    # =====================================================
-    # EDGE-TTS RATE
-    # =====================================================
 
     if float(voice_speed) == 1.0:
 
@@ -1567,17 +2112,11 @@ if "myanmar_recap" in st.session_state:
 
         tts_rate = "+20%"
 
-
     st.caption(
         "CPU optimized • "
         "Natural TTS crossfade • "
         "Actual TTS duration used for subtitle timing"
     )
-
-
-    # =====================================================
-    # GENERATE VOICEOVER
-    # =====================================================
 
     if st.button(
         "🎙️ Generate Myanmar Voiceover"
@@ -1587,13 +2126,11 @@ if "myanmar_recap" in st.session_state:
 
             import edge_tts
 
-
             text = (
                 st.session_state[
                     "myanmar_recap"
                 ]
             ).strip()
-
 
             if not text:
 
@@ -1603,16 +2140,10 @@ if "myanmar_recap" in st.session_state:
 
                 st.stop()
 
-
-            # =================================================
-            # Split narration
-            # =================================================
-
             chunks = split_myanmar_text(
                 text,
                 max_chars=100
             )
-
 
             if not chunks:
 
@@ -1622,35 +2153,22 @@ if "myanmar_recap" in st.session_state:
 
                 st.stop()
 
-
             st.info(
                 f"📝 Narration divided into "
                 f"{len(chunks)} voice segments."
             )
 
-
-            # =================================================
-            # WORKING DIRECTORY
-            # =================================================
-
             work_dir = tempfile.mkdtemp(
                 prefix="movie_recap_voice_"
             )
-
 
             raw_files = []
 
             raw_durations = []
 
-
             progress = st.progress(
                 0
             )
-
-
-            # =================================================
-            # TTS GENERATION
-            # =================================================
 
             async def create_all_tts():
 
@@ -1683,15 +2201,9 @@ if "myanmar_recap" in st.session_state:
 
                 return results
 
-
             raw_files = asyncio.run(
                 create_all_tts()
             )
-
-
-            # =================================================
-            # MEASURE DURATIONS
-            # =================================================
 
             for index, raw_file in enumerate(
                 raw_files
@@ -1710,18 +2222,10 @@ if "myanmar_recap" in st.session_state:
                     / len(raw_files)
                 )
 
-
-            # =================================================
-            # NATURAL CROSSFADE
-            # =================================================
-
             TTS_CROSSFADE = 0.06
-
 
             normalized_files = []
 
-
-            # Normalize every TTS segment first.
             for index, raw_file in enumerate(
                 raw_files
             ):
@@ -1760,16 +2264,10 @@ if "myanmar_recap" in st.session_state:
                     normalized_file
                 )
 
-
-            # =================================================
-            # COMBINE WITH ACROSSFADE
-            # =================================================
-
             combined_audio = os.path.join(
                 work_dir,
                 "combined.wav"
             )
-
 
             if len(normalized_files) == 1:
 
@@ -1791,14 +2289,11 @@ if "myanmar_recap" in st.session_state:
                         ]
                     )
 
-
                 filter_parts = []
-
 
                 previous_label = (
                     "[0:a]"
                 )
-
 
                 for i in range(
                     1,
@@ -1825,11 +2320,9 @@ if "myanmar_recap" in st.session_state:
                         output_label
                     )
 
-
                 filter_complex = ";".join(
                     filter_parts
                 )
-
 
                 combine_command = [
                     "ffmpeg",
@@ -1852,13 +2345,11 @@ if "myanmar_recap" in st.session_state:
                     ]
                 )
 
-
                 combine_result = subprocess.run(
                     combine_command,
                     capture_output=True,
                     text=True
                 )
-
 
                 if combine_result.returncode != 0:
 
@@ -1866,16 +2357,10 @@ if "myanmar_recap" in st.session_state:
                         combine_result.stderr[-3000:]
                     )
 
-
-            # =================================================
-            # FINAL MP3
-            # =================================================
-
             final_voice_file = os.path.join(
                 work_dir,
                 "myanmar_voiceover.mp3"
             )
-
 
             convert_result = subprocess.run(
                 [
@@ -1893,31 +2378,19 @@ if "myanmar_recap" in st.session_state:
                 text=True
             )
 
-
             if convert_result.returncode != 0:
 
                 raise RuntimeError(
                     convert_result.stderr[-3000:]
                 )
 
-
-            # =================================================
-            # ACTUAL FINAL DURATION
-            # =================================================
-
             voice_duration = get_audio_duration(
                 final_voice_file
             )
 
-
-            # =================================================
-            # SUBTITLE TIMING
-            # =================================================
-
             subtitle_data = []
 
             current_time = 0.0
-
 
             for index, chunk in enumerate(
                 chunks
@@ -1927,17 +2400,14 @@ if "myanmar_recap" in st.session_state:
                     raw_durations[index]
                 )
 
-
                 start_time = (
                     current_time
                 )
-
 
                 end_time = (
                     start_time
                     + raw_duration
                 )
-
 
                 if index < len(chunks) - 1:
 
@@ -1950,12 +2420,10 @@ if "myanmar_recap" in st.session_state:
 
                     next_time = end_time
 
-
                 next_time = min(
                     next_time,
                     voice_duration
                 )
-
 
                 if next_time <= start_time:
 
@@ -1963,7 +2431,6 @@ if "myanmar_recap" in st.session_state:
                         voice_duration,
                         start_time + 0.05
                     )
-
 
                 if start_time < voice_duration:
 
@@ -1975,22 +2442,15 @@ if "myanmar_recap" in st.session_state:
                         }
                     )
 
-
                 current_time = (
                     end_time
                     - TTS_CROSSFADE
                 )
 
-
                 current_time = max(
                     current_time,
                     0
                 )
-
-
-            # =================================================
-            # SESSION STATE
-            # =================================================
 
             st.session_state[
                 "voiceover_file"
@@ -2026,18 +2486,13 @@ if "myanmar_recap" in st.session_state:
                 "tts_rate"
             ] = tts_rate
 
-
-            # =================================================
-            # RESULTS
-            # =================================================
-
             st.success(
                 f"✅ Myanmar {voice_gender} voiceover generated!"
             )
 
             st.success(
                 f"✅ {len(subtitle_data)} subtitles "
-                f"synced with the voice."
+                "synced with the voice."
             )
 
             st.info(
@@ -2100,7 +2555,6 @@ if "subtitle_data" in st.session_state:
         "with the generated voiceover."
     )
 
-
     preview_text = "\n".join(
         [
             f'{item["start"]:.2f}s → '
@@ -2112,13 +2566,11 @@ if "subtitle_data" in st.session_state:
         ]
     )
 
-
     st.text_area(
         "💬 Myanmar Subtitle Preview",
         preview_text,
         height=400
     )
-
 
     st.caption(
         "ℹ️ Subtitle timing comes directly "
@@ -2142,7 +2594,6 @@ if "subtitle_data" in st.session_state:
 
     srt_lines = []
 
-
     for i, item in enumerate(
         st.session_state[
             "subtitle_data"
@@ -2162,7 +2613,6 @@ if "subtitle_data" in st.session_state:
             item["text"]
         ).strip()
 
-
         start_h = int(
             start // 3600
         )
@@ -2178,7 +2628,6 @@ if "subtitle_data" in st.session_state:
         start_ms = int(
             (start % 1) * 1000
         )
-
 
         end_h = int(
             end // 3600
@@ -2196,14 +2645,12 @@ if "subtitle_data" in st.session_state:
             (end % 1) * 1000
         )
 
-
         start_time = (
             f"{start_h:02d}:"
             f"{start_m:02d}:"
             f"{start_s:02d},"
             f"{start_ms:03d}"
         )
-
 
         end_time = (
             f"{end_h:02d}:"
@@ -2212,7 +2659,6 @@ if "subtitle_data" in st.session_state:
             f"{end_ms:03d}"
         )
 
-
         srt_lines.append(
             f"{i}\n"
             f"{start_time} --> "
@@ -2220,11 +2666,9 @@ if "subtitle_data" in st.session_state:
             f"{text}\n"
         )
 
-
     srt_content = "\n".join(
         srt_lines
     )
-
 
     st.download_button(
         "📥 Download Myanmar Subtitle (.srt)",
@@ -2293,9 +2737,7 @@ if "subtitle_data" in st.session_state:
         0
     )
 
-
     fixed_subtitles = []
-
 
     for item in st.session_state[
         "subtitle_data"
@@ -2316,11 +2758,8 @@ if "subtitle_data" in st.session_state:
             item["text"]
         ).strip()
 
-
         if not text:
-
             continue
-
 
         if subtitle_duration > 0:
 
@@ -2333,11 +2772,9 @@ if "subtitle_data" in st.session_state:
                 subtitle_duration
             )
 
-
         if end <= start:
 
             continue
-
 
         fixed_subtitles.append(
             {
@@ -2347,16 +2784,13 @@ if "subtitle_data" in st.session_state:
             }
         )
 
-
     st.session_state[
         "subtitle_data"
     ] = fixed_subtitles
 
-
     st.session_state[
         "subtitle_timing_source"
     ] = "tts_segments_crossfade"
-
 
     st.success(
         f"✅ Voiceover synced: "
@@ -2435,7 +2869,6 @@ if (
                 "movie_recap_original.mp4"
             )
 
-
             with open(
                 original_video,
                 "wb"
@@ -2447,13 +2880,11 @@ if (
                     ]
                 )
 
-
             voice_file = (
                 st.session_state[
                     "voiceover_file"
                 ]
             )
-
 
             # =================================================
             # VIDEO DURATION
@@ -2463,7 +2894,6 @@ if (
                 original_video
             )
 
-
             # =================================================
             # VOICEOVER DURATION
             # =================================================
@@ -2472,17 +2902,14 @@ if (
                 voice_file
             )
 
-
             st.session_state[
                 "voice_duration"
             ] = voice_duration
-
 
             st.info(
                 f"🎙️ Voiceover: "
                 f"{voice_duration:.2f} sec"
             )
-
 
             # =================================================
             # FREEZE SETTINGS
@@ -2506,58 +2933,151 @@ if (
 
                 freeze_time = 0
 
-
             # =================================================
-            # OUTPUT DIMENSIONS / FONT SETTINGS
+            # OUTPUT DIMENSIONS
             # =================================================
 
-            original_width = int(st.session_state.get("video_width", 576))
-            original_height = int(st.session_state.get("video_height", 1024))
+            original_width = int(
+                st.session_state.get(
+                    "video_width",
+                    576
+                )
+            )
+
+            original_height = int(
+                st.session_state.get(
+                    "video_height",
+                    1024
+                )
+            )
 
             if aspect_ratio == "Original":
-                output_width = max(2, original_width - (original_width % 2))
-                output_height = max(2, original_height - (original_height % 2))
-            elif aspect_ratio == "9:16":
-                output_width, output_height = 576, 1024
-            elif aspect_ratio == "16:9":
-                output_width, output_height = 1024, 576
-            elif aspect_ratio == "1:1":
-                output_width, output_height = 768, 768
-            else:
-                output_width, output_height = 768, 1024
 
-            selected_font_name = subtitle_font
+                output_width = max(
+                    2,
+                    original_width
+                    - (
+                        original_width % 2
+                    )
+                )
+
+                output_height = max(
+                    2,
+                    original_height
+                    - (
+                        original_height % 2
+                    )
+                )
+
+            elif aspect_ratio == "9:16":
+
+                output_width = 576
+                output_height = 1024
+
+            elif aspect_ratio == "16:9":
+
+                output_width = 1024
+                output_height = 576
+
+            elif aspect_ratio == "1:1":
+
+                output_width = 768
+                output_height = 768
+
+            else:
+
+                output_width = 768
+                output_height = 1024
+
+            selected_font_name = (
+                subtitle_font
+            )
+
             font_dir = None
 
-            if subtitle_font == "Custom Font" and custom_font_file is not None:
-                font_dir = os.path.join(tempfile.gettempdir(), "movie_recap_fonts")
-                os.makedirs(font_dir, exist_ok=True)
-                custom_font_path = os.path.join(font_dir, custom_font_file.name)
-                with open(custom_font_path, "wb") as font_handle:
-                    font_handle.write(custom_font_file.getvalue())
-                selected_font_name = "CustomFont"
+            if (
+                subtitle_font == "Custom Font"
+                and
+                custom_font_file is not None
+            ):
 
-            subtitle_wrap_chars = 24 if output_height >= output_width else 42
-            subtitle_margin_v = max(40, int(output_height * 0.055))
+                font_dir = os.path.join(
+                    tempfile.gettempdir(),
+                    "movie_recap_fonts"
+                )
+
+                os.makedirs(
+                    font_dir,
+                    exist_ok=True
+                )
+
+                custom_font_path = os.path.join(
+                    font_dir,
+                    custom_font_file.name
+                )
+
+                with open(
+                    custom_font_path,
+                    "wb"
+                ) as font_handle:
+
+                    font_handle.write(
+                        custom_font_file.getvalue()
+                    )
+
+                selected_font_name = (
+                    "CustomFont"
+                )
+
+            subtitle_wrap_chars = (
+                24
+                if output_height >= output_width
+                else 42
+            )
+
+            subtitle_margin_v = max(
+                40,
+                int(
+                    output_height * 0.055
+                )
+            )
 
             # =================================================
             # ASS SUBTITLES
             # =================================================
 
-            ass_content = f"""[Script Info]
-ScriptType: v4.00+
-PlayResX: {output_width}
-PlayResY: {output_height}
-ScaledBorderAndShadow: yes
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Myanmar,{selected_font_name},{subtitle_size},&H0000FFFF,&H0000FFFF,&H00000000,&H99000000,0,0,0,0,100,100,0,0,1,2,1,2,40,40,{subtitle_margin_v},1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-"""
-
+            ass_content = (
+                "[Script Info]\n"
+                "ScriptType: v4.00+\n"
+                f"PlayResX: {output_width}\n"
+                f"PlayResY: {output_height}\n"
+                "ScaledBorderAndShadow: yes\n\n"
+                "[V4+ Styles]\n"
+                "Format: Name, Fontname, Fontsize, "
+                "PrimaryColour, SecondaryColour, "
+                "OutlineColour, BackColour, Bold, "
+                "Italic, Underline, StrikeOut, "
+                "ScaleX, ScaleY, Spacing, Angle, "
+                "BorderStyle, Outline, Shadow, "
+                "Alignment, MarginL, MarginR, "
+                "MarginV, Encoding\n"
+                f"Style: Myanmar,"
+                f"{selected_font_name},"
+                f"{subtitle_size},"
+                f"&H0000FFFF,"
+                f"&H0000FFFF,"
+                f"&H00000000,"
+                f"&H99000000,"
+                f"0,0,0,0,"
+                f"100,100,0,0,"
+                f"1,2,1,2,"
+                f"40,40,"
+                f"{subtitle_margin_v},1\n\n"
+                "[Events]\n"
+                "Format: Layer, Start, End, Style, "
+                "Name, MarginL, MarginR, MarginV, "
+                "Effect, Text\n"
+            )
 
             for item in st.session_state[
                 "subtitle_data"
@@ -2600,12 +3120,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     f"{text}\n"
                 )
 
-
             ass_file = os.path.join(
                 tempfile.gettempdir(),
                 "myanmar_subtitles.ass"
             )
-
 
             with open(
                 ass_file,
@@ -2617,6 +3135,118 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     ass_content
                 )
 
+            # =================================================
+            # BLUR SETTINGS
+            # =================================================
+
+            if blur_enabled:
+
+                blur_x_value = float(
+                    st.session_state.get(
+                        "main_blur_x_value",
+                        10.0
+                    )
+                )
+
+                blur_y_value = float(
+                    st.session_state.get(
+                        "main_blur_y_value",
+                        78.0
+                    )
+                )
+
+                blur_width_value = float(
+                    st.session_state.get(
+                        "main_blur_width_value",
+                        80.0
+                    )
+                )
+
+                blur_height_value = float(
+                    st.session_state.get(
+                        "main_blur_height_value",
+                        18.0
+                    )
+                )
+
+                blur_x_px = int(
+                    output_width
+                    * blur_x_value
+                    / 100.0
+                )
+
+                blur_y_px = int(
+                    output_height
+                    * blur_y_value
+                    / 100.0
+                )
+
+                blur_width_px = int(
+                    output_width
+                    * blur_width_value
+                    / 100.0
+                )
+
+                blur_height_px = int(
+                    output_height
+                    * blur_height_value
+                    / 100.0
+                )
+
+                blur_width_px = max(
+                    2,
+                    blur_width_px
+                    - blur_width_px % 2
+                )
+
+                blur_height_px = max(
+                    2,
+                    blur_height_px
+                    - blur_height_px % 2
+                )
+
+                blur_width_px = min(
+                    blur_width_px,
+                    output_width
+                )
+
+                blur_height_px = min(
+                    blur_height_px,
+                    output_height
+                )
+
+                blur_x_px = max(
+                    0,
+                    min(
+                        blur_x_px,
+                        output_width
+                        - blur_width_px
+                    )
+                )
+
+                blur_y_px = max(
+                    0,
+                    min(
+                        blur_y_px,
+                        output_height
+                        - blur_height_px
+                    )
+                )
+
+                blur_strength_value = max(
+                    1,
+                    int(
+                        blur_strength
+                    )
+                )
+
+                st.info(
+                    f"🔲 Final Blur: "
+                    f"X {blur_x_value:.1f}% | "
+                    f"Y {blur_y_value:.1f}% | "
+                    f"W {blur_width_value:.1f}% | "
+                    f"H {blur_height_value:.1f}%"
+                )
 
             # =================================================
             # VIDEO FILTER
@@ -2626,6 +3256,80 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
             labels = []
 
+            # -------------------------------------------------
+            # BLUR HELPER
+            # -------------------------------------------------
+
+            def make_blur_filter(
+                input_label,
+                output_label
+            ):
+
+                if not blur_enabled:
+
+                    filter_parts.append(
+                        f"{input_label}"
+                        f"format=yuv420p"
+                        f"{output_label}"
+                    )
+
+                    return
+
+                unique_name = (
+                    output_label
+                    .strip("[]")
+                    .replace(
+                        "-",
+                        "_"
+                    )
+                )
+
+                blurbase_name = (
+                    f"[blurbase_{unique_name}]"
+                )
+
+                cleanbase_name = (
+                    f"[cleanbase_{unique_name}]"
+                )
+
+                blurred_name = (
+                    f"[blurred_{unique_name}]"
+                )
+
+                filter_parts.append(
+                    f"{input_label}"
+                    f"split=2"
+                    f"{blurbase_name}"
+                    f"{cleanbase_name}"
+                )
+
+                filter_parts.append(
+                    blurbase_name
+                    + f"crop="
+                    f"{blur_width_px}:"
+                    f"{blur_height_px}:"
+                    f"{blur_x_px}:"
+                    f"{blur_y_px},"
+                    f"boxblur="
+                    f"luma_radius={blur_strength_value}:"
+                    f"luma_power=2:"
+                    f"chroma_radius={blur_strength_value}:"
+                    f"chroma_power=2"
+                    + blurred_name
+                )
+
+                filter_parts.append(
+                    cleanbase_name
+                    + blurred_name
+                    + f"overlay="
+                    f"{blur_x_px}:"
+                    f"{blur_y_px}"
+                    + output_label
+                )
+
+            # -------------------------------------------------
+            # BUILD NORMAL + FREEZE SEGMENTS
+            # -------------------------------------------------
 
             if freeze_enabled:
 
@@ -2635,7 +3339,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         / interval
                     )
                 )
-
 
                 for i in range(
                     segment_count
@@ -2650,85 +3353,194 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         video_duration
                     )
 
-
                     normal_label = (
-                        f"normal{i}"
+                        f"[normal{i}]"
                     )
 
+                    normal_scaled_label = (
+                        f"[normal_scaled{i}]"
+                    )
 
-                    normal_filter = (
+                    # -----------------------------------------
+                    # NORMAL SEGMENT
+                    # -----------------------------------------
+
+                    filter_parts.append(
                         f"[0:v]"
                         f"trim="
                         f"start={start}:"
                         f"end={end},"
                         f"setpts=PTS-STARTPTS,"
-                        f"scale={output_width}:{output_height},"
+                        f"scale="
+                        f"{output_width}:"
+                        f"{output_height},"
                         f"setsar=1"
-                        f"[{normal_label}]"
+                        f"{normal_scaled_label}"
                     )
 
-
-                    filter_parts.append(
-                        normal_filter
+                    make_blur_filter(
+                        normal_scaled_label,
+                        normal_label
                     )
 
                     labels.append(
-                        f"[{normal_label}]"
+                        normal_label
                     )
 
-
-                    # =============================================
+                    # -----------------------------------------
                     # FREEZE + ZOOM
-                    # =============================================
+                    # -----------------------------------------
 
                     if end < video_duration:
 
-                        freeze_label = (
-                            f"freeze{i}"
+                        freeze_source_label = (
+                            f"[freeze_source{i}]"
                         )
 
+                        freeze_label = (
+                            f"[freeze{i}]"
+                        )
 
                         frame_time = max(
                             start,
                             end - 0.10
                         )
 
+                        freeze_frames = max(
+                            2,
+                            int(
+                                round(
+                                    freeze_time * 30
+                                )
+                            )
+                        )
 
-                        freeze_filter = (
+                        half_frames = max(
+                            1,
+                            freeze_frames // 2
+                        )
+
+                        if freeze_frames <= 2:
+
+                            zoom_expression = "1"
+
+                        else:
+
+                            zoom_in_end = (
+                                half_frames - 1
+                            )
+
+                            zoom_out_frames = max(
+                                1,
+                                freeze_frames
+                                - half_frames
+                                - 1
+                            )
+
+                            zoom_expression = (
+                                f"if("
+                                f"lte(on,{zoom_in_end}),"
+                                f"1+0.15*on/"
+                                f"{max(1, zoom_in_end)},"
+                                f"1.15-0.15*"
+                                f"(on-{half_frames})/"
+                                f"{zoom_out_frames}"
+                                f")"
+                            )
+
+                        # -----------------------------------------
+                        # ONE ACTUAL FRAME
+                        # -----------------------------------------
+
+                        filter_parts.append(
                             f"[0:v]"
                             f"trim="
                             f"start={frame_time}:"
                             f"end={frame_time + 0.0334},"
                             f"setpts=PTS-STARTPTS,"
                             f"select='eq(n,0)',"
-                            f"scale={output_width}:{output_height},"
-                            f"setsar=1,"
-                            f"zoompan="
-                            f"z='if(lte(on,29),"
-                            f"1+0.15*on/29,"
-                            f"1.15-0.15*(on-29)/29)':"
-                            f"d=60:"
-                            f"x='iw/2-(iw/zoom/2)':"
-                            f"y='ih/2-(ih/zoom/2)':"
-                            f"s={output_width}x{output_height}:"
-                            f"fps=30"
-                            f"[{freeze_label}]"
+                            f"scale="
+                            f"{output_width}:"
+                            f"{output_height},"
+                            f"setsar=1"
+                            f"{freeze_source_label}"
                         )
 
+                        # -----------------------------------------
+                        # BLUR BEFORE ZOOM
+                        # -----------------------------------------
+
+                        freeze_blur_label = (
+                            f"[freeze_blur{i}]"
+                        )
+
+                        if blur_enabled:
+
+                            filter_parts.append(
+                                freeze_source_label
+                                + "split=2"
+                                f"[freeze_blurbase{i}]"
+                                f"[freeze_cleanbase{i}]"
+                            )
+
+                            filter_parts.append(
+                                f"[freeze_blurbase{i}]"
+                                f"crop="
+                                f"{blur_width_px}:"
+                                f"{blur_height_px}:"
+                                f"{blur_x_px}:"
+                                f"{blur_y_px},"
+                                f"boxblur="
+                                f"luma_radius="
+                                f"{blur_strength_value}:"
+                                f"luma_power=2:"
+                                f"chroma_radius="
+                                f"{blur_strength_value}:"
+                                f"chroma_power=2"
+                                f"[freeze_blurredarea{i}]"
+                            )
+
+                            filter_parts.append(
+                                f"[freeze_cleanbase{i}]"
+                                f"[freeze_blurredarea{i}]"
+                                f"overlay="
+                                f"{blur_x_px}:"
+                                f"{blur_y_px}"
+                                f"{freeze_blur_label}"
+                            )
+
+                        else:
+
+                            filter_parts.append(
+                                freeze_source_label
+                                + freeze_blur_label
+                            )
+
+                        # -----------------------------------------
+                        # ZOOM
+                        # -----------------------------------------
 
                         filter_parts.append(
-                            freeze_filter
+                            freeze_blur_label
+                            + f"zoompan="
+                            f"z='{zoom_expression}':"
+                            f"d={freeze_frames}:"
+                            f"x='iw/2-(iw/zoom/2)':"
+                            f"y='ih/2-(ih/zoom/2)':"
+                            f"s="
+                            f"{output_width}x"
+                            f"{output_height}:"
+                            f"fps=30"
+                            + freeze_label
                         )
 
                         labels.append(
-                            f"[{freeze_label}]"
+                            freeze_label
                         )
-
 
                 concat_inputs = "".join(
                     labels
                 )
-
 
                 concat_filter = (
                     f"{concat_inputs}"
@@ -2741,37 +3553,87 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     f"[basevideo]"
                 )
 
-
                 filter_parts.append(
                     concat_filter
                 )
 
-
             else:
 
-                filter_parts.append(
-                    "[0:v]"
-                    f"scale={output_width}:{output_height},"
-                    "setsar=1,"
-                    "format=yuv420p"
-                    "[basevideo]"
-                )
+                if blur_enabled:
 
+                    filter_parts.append(
+                        "[0:v]"
+                        f"scale="
+                        f"{output_width}:"
+                        f"{output_height},"
+                        "setsar=1"
+                        "[scaledvideo]"
+                    )
+
+                    filter_parts.append(
+                        "[scaledvideo]"
+                        "split=2"
+                        "[blurbase_single]"
+                        "[cleanbase_single]"
+                    )
+
+                    filter_parts.append(
+                        "[blurbase_single]"
+                        f"crop="
+                        f"{blur_width_px}:"
+                        f"{blur_height_px}:"
+                        f"{blur_x_px}:"
+                        f"{blur_y_px},"
+                        f"boxblur="
+                        f"luma_radius="
+                        f"{blur_strength_value}:"
+                        f"luma_power=2:"
+                        f"chroma_radius="
+                        f"{blur_strength_value}:"
+                        f"chroma_power=2"
+                        "[blurredarea_single]"
+                    )
+
+                    filter_parts.append(
+                        "[cleanbase_single]"
+                        "[blurredarea_single]"
+                        f"overlay="
+                        f"{blur_x_px}:"
+                        f"{blur_y_px}"
+                        "[basevideo]"
+                    )
+
+                else:
+
+                    filter_parts.append(
+                        "[0:v]"
+                        f"scale="
+                        f"{output_width}:"
+                        f"{output_height},"
+                        "setsar=1,"
+                        "format=yuv420p"
+                        "[basevideo]"
+                    )
 
             # =================================================
             # SUBTITLE OVERLAY
             # =================================================
 
-            ass_filter = f"ass={ass_file}"
+            ass_filter = (
+                f"ass={ass_file}"
+            )
+
             if font_dir:
-                ass_filter += f":fontsdir={font_dir}"
+
+                ass_filter += (
+                    f":fontsdir={font_dir}"
+                )
 
             filter_parts.append(
                 "[basevideo]"
                 + ass_filter
                 + "[vout]"
             )
-
 
             # =================================================
             # DURATION CALCULATION
@@ -2788,7 +3650,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 actual_freeze_count = 0
 
-
             base_video_duration = (
                 video_duration
                 +
@@ -2798,25 +3659,21 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 )
             )
 
-
             extra_duration = max(
                 0.0,
                 voice_duration
                 - base_video_duration
             )
 
-
             st.write(
                 f"🎬 Base Video Duration: "
                 f"{base_video_duration:.2f} sec"
             )
 
-
             st.write(
                 f"➕ Extra Hold Duration: "
                 f"{extra_duration:.2f} sec"
             )
-
 
             # =================================================
             # EXTEND FINAL FRAME
@@ -2845,7 +3702,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     "[vout]"
                 )
 
-
             # =================================================
             # FILTER COMPLEX
             # =================================================
@@ -2853,7 +3709,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             filter_complex = ";".join(
                 filter_parts
             )
-
 
             # =================================================
             # OUTPUT
@@ -2863,7 +3718,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 tempfile.gettempdir(),
                 "final_movie_recap.mp4"
             )
-
 
             command = [
                 "ffmpeg",
@@ -2895,7 +3749,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 output_video
             ]
 
-
             # =================================================
             # EXPORT
             # =================================================
@@ -2904,13 +3757,21 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 "⏳ Creating final video..."
             )
 
+            if blur_enabled:
+
+                st.info(
+                    "🔲 Original subtitle blur is enabled."
+                )
+
+                st.info(
+                    "🔍 Blur is attached before Freeze + Zoom."
+                )
 
             result = subprocess.run(
                 command,
                 capture_output=True,
                 text=True
             )
-
 
             if result.returncode != 0:
 
@@ -2929,36 +3790,30 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     output_video
                 )
 
-
                 st.success(
                     "✅ Final Recap Video "
                     "Created Successfully!"
                 )
-
 
                 st.info(
                     f"🎬 Final Video Duration: "
                     f"{final_duration:.2f} sec"
                 )
 
-
                 st.info(
                     f"🎙️ Voiceover Duration: "
                     f"{voice_duration:.2f} sec"
                 )
-
 
                 duration_difference = (
                     final_duration
                     - voice_duration
                 )
 
-
                 st.info(
                     f"⏱️ Duration Difference: "
                     f"{duration_difference:+.2f} sec"
                 )
-
 
                 with open(
                     output_video,
@@ -2973,7 +3828,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         ),
                         mime="video/mp4"
                     )
-
 
         except Exception as e:
 
