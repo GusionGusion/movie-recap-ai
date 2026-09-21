@@ -243,7 +243,12 @@ def wrap_myanmar(
 ):
     """Wrap subtitle into a maximum of 2 ASS lines without dropping text."""
 
-    text = re.sub(r"\\s+", " ", str(text).strip())
+    # FIX: \\s+ -> \s+
+    text = re.sub(
+        r"\s+",
+        " ",
+        str(text).strip()
+    )
 
     if not text:
         return ""
@@ -253,23 +258,47 @@ def wrap_myanmar(
     current = ""
 
     for word in words:
-        candidate = word if not current else current + " " + word
 
-        if len(candidate) <= max_chars or not current:
+        candidate = (
+            word
+            if not current
+            else current + " " + word
+        )
+
+        if (
+            len(candidate) <= max_chars
+            or not current
+        ):
+
             current = candidate
+
         elif len(lines) == 0:
-            lines.append(current)
+
+            lines.append(
+                current
+            )
+
             current = word
+
         else:
+
             current += " " + word
 
     if current:
-        lines.append(current)
+        lines.append(
+            current
+        )
 
     if len(lines) > 2:
-        lines = [lines[0], " ".join(lines[1:])]
 
-    return "\\N".join(lines[:2])
+        lines = [
+            lines[0],
+            " ".join(lines[1:])
+        ]
+
+    return "\\N".join(
+        lines[:2]
+    )
 
 
 # =========================================================
@@ -613,14 +642,22 @@ with settings_col2:
 
     subtitle_font = st.selectbox(
         "🔤 Subtitle Font",
-        ["Noto Sans Myanmar", "Pyidaungsu", "Myanmar Text", "Custom Font"],
+        [
+            "Noto Sans Myanmar",
+            "Pyidaungsu",
+            "Myanmar Text",
+            "Custom Font"
+        ],
         index=0,
         key="main_subtitle_font"
     )
 
     custom_font_file = st.file_uploader(
         "📁 Upload Custom Font (.ttf/.otf)",
-        type=["ttf", "otf"],
+        type=[
+            "ttf",
+            "otf"
+        ],
         key="main_custom_font"
     )
 
@@ -776,11 +813,6 @@ if uploaded_file is not None:
                 ]
             )
 
-            # -------------------------------------------------
-            # Convert to same structure expected by
-            # Scene Analysis
-            # -------------------------------------------------
-
             result = {
                 "text": transcript_text,
                 "segments": transcript_segments
@@ -868,10 +900,6 @@ if "transcript_result" in st.session_state:
                     ]
                 )
 
-                # -------------------------------------------------
-                # ACTUAL VIDEO FRAME ANALYSIS
-                # -------------------------------------------------
-
                 cap = cv2.VideoCapture(
                     video_path
                 )
@@ -886,12 +914,6 @@ if "transcript_result" in st.session_state:
 
                     scene_items = []
 
-                    # One actual video frame for each
-                    # timestamped Faster-Whisper segment.
-                    #
-                    # Limit to 24 frames to keep Gemini request
-                    # reasonable. If there are more segments,
-                    # sample them chronologically.
                     usable_segments = [
                         seg
                         for seg in segments
@@ -967,7 +989,6 @@ if "transcript_result" in st.session_state:
                         ).strip()
 
                         if not text:
-
                             continue
 
                         timestamp = (
@@ -982,7 +1003,6 @@ if "transcript_result" in st.session_state:
                         )
 
                         if frame_bytes is None:
-
                             continue
 
                         scene_items.append(
@@ -1006,10 +1026,6 @@ if "transcript_result" in st.session_state:
                         )
 
                     else:
-
-                        # -------------------------------------------------
-                        # ONE DIRECT GEMINI SCENE ANALYSIS
-                        # -------------------------------------------------
 
                         prompt = """
 You are analyzing an actual movie/video.
@@ -1051,9 +1067,7 @@ Rules:
   keep it only in Dialogue and do not describe it as a visual event.
 - Keep the output short and natural.
 - The purpose is to make the later recap match the actual video.
-
 """
-
 
                         contents = []
 
@@ -1137,10 +1151,6 @@ Rules:
                     f"❌ Scene Analysis failed: {e}"
                 )
 
-
-# ---------------------------------------------------------
-# DISPLAY DIRECT SCENE ANALYSIS
-# ---------------------------------------------------------
 
 if "ai_scene_analysis" in st.session_state:
 
@@ -1227,9 +1237,21 @@ Scene Analysis:
                 )
             )
 
+            recap_text = (
+                response.text
+                if response
+                else ""
+            )
+
+            if not recap_text.strip():
+
+                raise RuntimeError(
+                    "Gemini returned an empty recap script."
+                )
+
             st.session_state[
                 "recap_script"
-            ] = response.text
+            ] = recap_text
 
             st.success(
                 "✅ Movie Recap Script generated!"
@@ -1301,6 +1323,8 @@ Rules:
 - Do not add English.
 - Write only the Myanmar narration.
 - Make it natural for voiceover.
+- Use "ဒယ်" instead of "တယ်" at sentence endings
+  where it sounds natural.
 
 English Recap:
 
@@ -1314,7 +1338,17 @@ English Recap:
                 )
             )
 
-            myanmar_text = response.text
+            myanmar_text = (
+                response.text
+                if response
+                else ""
+            )
+
+            if not myanmar_text.strip():
+
+                raise RuntimeError(
+                    "Gemini returned an empty Myanmar recap."
+                )
 
             st.session_state[
                 "myanmar_recap"
@@ -1615,7 +1649,6 @@ if "myanmar_recap" in st.session_state:
 
 
                 filter_parts = []
-
 
                 previous_label = (
                     "[0:a]"
@@ -2333,52 +2366,152 @@ if (
             # OUTPUT DIMENSIONS / FONT SETTINGS
             # =================================================
 
-            original_width = int(st.session_state.get("video_width", 576))
-            original_height = int(st.session_state.get("video_height", 1024))
+            original_width = int(
+                st.session_state.get(
+                    "video_width",
+                    576
+                )
+            )
+
+            original_height = int(
+                st.session_state.get(
+                    "video_height",
+                    1024
+                )
+            )
+
 
             if aspect_ratio == "Original":
-                output_width = max(2, original_width - (original_width % 2))
-                output_height = max(2, original_height - (original_height % 2))
-            elif aspect_ratio == "9:16":
-                output_width, output_height = 576, 1024
-            elif aspect_ratio == "16:9":
-                output_width, output_height = 1024, 576
-            elif aspect_ratio == "1:1":
-                output_width, output_height = 768, 768
-            else:
-                output_width, output_height = 768, 1024
 
-            selected_font_name = subtitle_font
+                output_width = max(
+                    2,
+                    original_width
+                    - (
+                        original_width % 2
+                    )
+                )
+
+                output_height = max(
+                    2,
+                    original_height
+                    - (
+                        original_height % 2
+                    )
+                )
+
+            elif aspect_ratio == "9:16":
+
+                output_width = 576
+                output_height = 1024
+
+            elif aspect_ratio == "16:9":
+
+                output_width = 1024
+                output_height = 576
+
+            elif aspect_ratio == "1:1":
+
+                output_width = 768
+                output_height = 768
+
+            else:
+
+                output_width = 768
+                output_height = 1024
+
+
+            selected_font_name = (
+                subtitle_font
+            )
+
             font_dir = None
 
-            if subtitle_font == "Custom Font" and custom_font_file is not None:
-                font_dir = os.path.join(tempfile.gettempdir(), "movie_recap_fonts")
-                os.makedirs(font_dir, exist_ok=True)
-                custom_font_path = os.path.join(font_dir, custom_font_file.name)
-                with open(custom_font_path, "wb") as font_handle:
-                    font_handle.write(custom_font_file.getvalue())
-                selected_font_name = "CustomFont"
 
-            subtitle_wrap_chars = 24 if output_height >= output_width else 42
-            subtitle_margin_v = max(40, int(output_height * 0.055))
+            if (
+                subtitle_font == "Custom Font"
+                and
+                custom_font_file is not None
+            ):
+
+                font_dir = os.path.join(
+                    tempfile.gettempdir(),
+                    "movie_recap_fonts"
+                )
+
+                os.makedirs(
+                    font_dir,
+                    exist_ok=True
+                )
+
+                custom_font_path = os.path.join(
+                    font_dir,
+                    custom_font_file.name
+                )
+
+                with open(
+                    custom_font_path,
+                    "wb"
+                ) as font_handle:
+
+                    font_handle.write(
+                        custom_font_file.getvalue()
+                    )
+
+                selected_font_name = (
+                    "CustomFont"
+                )
+
+
+            subtitle_wrap_chars = (
+                24
+                if output_height >= output_width
+                else 42
+            )
+
+            subtitle_margin_v = max(
+                40,
+                int(
+                    output_height * 0.055
+                )
+            )
+
 
             # =================================================
             # ASS SUBTITLES
             # =================================================
 
-            ass_content = f"""[Script Info]
-ScriptType: v4.00+
-PlayResX: {output_width}
-PlayResY: {output_height}
-ScaledBorderAndShadow: yes
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Myanmar,{selected_font_name},{subtitle_size},&H0000FFFF,&H0000FFFF,&H00000000,&H99000000,0,0,0,0,100,100,0,0,1,2,1,2,40,40,{subtitle_margin_v},1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-"""
+            ass_content = (
+                "[Script Info]\n"
+                "ScriptType: v4.00+\n"
+                f"PlayResX: {output_width}\n"
+                f"PlayResY: {output_height}\n"
+                "ScaledBorderAndShadow: yes\n\n"
+                "[V4+ Styles]\n"
+                "Format: Name, Fontname, Fontsize, "
+                "PrimaryColour, SecondaryColour, "
+                "OutlineColour, BackColour, Bold, "
+                "Italic, Underline, StrikeOut, "
+                "ScaleX, ScaleY, Spacing, Angle, "
+                "BorderStyle, Outline, Shadow, "
+                "Alignment, MarginL, MarginR, "
+                "MarginV, Encoding\n"
+                f"Style: Myanmar,"
+                f"{selected_font_name},"
+                f"{subtitle_size},"
+                f"&H0000FFFF,"
+                f"&H0000FFFF,"
+                f"&H00000000,"
+                f"&H99000000,"
+                f"0,0,0,0,"
+                f"100,100,0,0,"
+                f"1,2,1,2,"
+                f"40,40,"
+                f"{subtitle_margin_v},1\n\n"
+                "[Events]\n"
+                "Format: Layer, Start, End, Style, "
+                "Name, MarginL, MarginR, MarginV, "
+                "Effect, Text\n"
+            )
 
 
             for item in st.session_state[
@@ -2484,7 +2617,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         f"start={start}:"
                         f"end={end},"
                         f"setpts=PTS-STARTPTS,"
-                        f"scale={output_width}:{output_height},"
+                        f"scale="
+                        f"{output_width}:"
+                        f"{output_height},"
                         f"setsar=1"
                         f"[{normal_label}]"
                     )
@@ -2516,6 +2651,57 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         )
 
 
+                        # -----------------------------------------
+                        # FIX:
+                        # Use the selected freeze_duration
+                        # instead of always using 60 frames.
+                        # 30 FPS × duration = frame count.
+                        # -----------------------------------------
+
+                        freeze_frames = max(
+                            2,
+                            int(
+                                round(
+                                    freeze_time * 30
+                                )
+                            )
+                        )
+
+                        half_frames = max(
+                            1,
+                            freeze_frames // 2
+                        )
+
+
+                        if freeze_frames <= 2:
+
+                            zoom_expression = "1"
+
+                        else:
+
+                            zoom_in_end = (
+                                half_frames - 1
+                            )
+
+                            zoom_out_frames = max(
+                                1,
+                                freeze_frames
+                                - half_frames
+                                - 1
+                            )
+
+                            zoom_expression = (
+                                f"if("
+                                f"lte(on,{zoom_in_end}),"
+                                f"1+0.15*on/"
+                                f"{max(1, zoom_in_end)},"
+                                f"1.15-0.15*"
+                                f"(on-{half_frames})/"
+                                f"{zoom_out_frames}"
+                                f")"
+                            )
+
+
                         freeze_filter = (
                             f"[0:v]"
                             f"trim="
@@ -2523,16 +2709,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             f"end={frame_time + 0.0334},"
                             f"setpts=PTS-STARTPTS,"
                             f"select='eq(n,0)',"
-                            f"scale={output_width}:{output_height},"
+                            f"scale="
+                            f"{output_width}:"
+                            f"{output_height},"
                             f"setsar=1,"
                             f"zoompan="
-                            f"z='if(lte(on,29),"
-                            f"1+0.15*on/29,"
-                            f"1.15-0.15*(on-29)/29)':"
-                            f"d=60:"
+                            f"z='{zoom_expression}':"
+                            f"d={freeze_frames}:"
                             f"x='iw/2-(iw/zoom/2)':"
                             f"y='ih/2-(ih/zoom/2)':"
-                            f"s={output_width}x{output_height}:"
+                            f"s="
+                            f"{output_width}x"
+                            f"{output_height}:"
                             f"fps=30"
                             f"[{freeze_label}]"
                         )
@@ -2573,7 +2761,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 filter_parts.append(
                     "[0:v]"
-                    f"scale={output_width}:{output_height},"
+                    f"scale="
+                    f"{output_width}:"
+                    f"{output_height},"
                     "setsar=1,"
                     "format=yuv420p"
                     "[basevideo]"
@@ -2584,9 +2774,16 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             # SUBTITLE OVERLAY
             # =================================================
 
-            ass_filter = f"ass={ass_file}"
+            ass_filter = (
+                f"ass={ass_file}"
+            )
+
             if font_dir:
-                ass_filter += f":fontsdir={font_dir}"
+
+                ass_filter += (
+                    f":fontsdir={font_dir}"
+                )
+
 
             filter_parts.append(
                 "[basevideo]"
