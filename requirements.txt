@@ -1,9 +1,5 @@
 streamlit
-faster-whisper
-torch
-numpy
-opencv-python-headless
 google-genai
+opencv-python-headless
+faster-whisper
 edge-tts
-streamlit-drawable-canvas
-Pillow
