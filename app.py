@@ -11,6 +11,16 @@ import json
 import re
 import shutil
 
+# =========================================================
+# OPTIONAL INTERACTIVE CANVAS
+# =========================================================
+
+try:
+    from streamlit_drawable_canvas import st_canvas
+    DRAWABLE_CANVAS_AVAILABLE = True
+except Exception:
+    DRAWABLE_CANVAS_AVAILABLE = False
+
 
 # =========================================================
 # PAGE SETTINGS
@@ -696,55 +706,490 @@ blur_enabled = st.checkbox(
     key="main_blur_enabled"
 )
 
+
+# =========================================================
+# INTERACTIVE BLUR PREVIEW
+# =========================================================
+
 if blur_enabled:
 
-    st.caption(
-        "💡 Set the rectangle area where the original "
-        "movie subtitle appears. Values are percentages "
-        "of the final output video."
+    st.markdown(
+        "### 🎯 Blur Box Preview"
     )
 
-    blur_col1, blur_col2 = st.columns(2)
+    st.caption(
+        "Preview frame ပေါ်က Blur Box ကို "
+        "လက်နဲ့ဆွဲပြီး Original Subtitle နေရာကို "
+        "ချိန်ပါ။"
+    )
 
-    with blur_col1:
+    if not DRAWABLE_CANVAS_AVAILABLE:
 
-        blur_x = st.slider(
-            "📍 Blur X Position (%)",
-            min_value=0,
-            max_value=100,
-            value=10,
-            step=1,
-            key="main_blur_x"
+        st.error(
+            "❌ Interactive Blur Tool မရပါ။ "
+            "requirements.txt ထဲမှာ "
+            "`streamlit-drawable-canvas` ထည့်ပြီး "
+            "app ကို restart လုပ်ပါ။"
         )
 
-        blur_y = st.slider(
-            "📍 Blur Y Position (%)",
-            min_value=0,
-            max_value=100,
-            value=78,
-            step=1,
-            key="main_blur_y"
+    elif (
+        "video_path" not in st.session_state
+        or not os.path.exists(
+            st.session_state["video_path"]
+        )
+    ):
+
+        st.warning(
+            "⚠️ Blur Preview အတွက် video အရင် upload လုပ်ပါ။"
         )
 
-    with blur_col2:
+    else:
 
-        blur_width = st.slider(
-            "↔️ Blur Width (%)",
-            min_value=1,
-            max_value=100,
-            value=80,
-            step=1,
-            key="main_blur_width"
+        preview_cap = cv2.VideoCapture(
+            st.session_state["video_path"]
         )
 
-        blur_height = st.slider(
-            "↕️ Blur Height (%)",
-            min_value=1,
-            max_value=100,
-            value=18,
-            step=1,
-            key="main_blur_height"
-        )
+        if preview_cap.isOpened():
+
+            preview_width = int(
+                preview_cap.get(
+                    cv2.CAP_PROP_FRAME_WIDTH
+                )
+            )
+
+            preview_height = int(
+                preview_cap.get(
+                    cv2.CAP_PROP_FRAME_HEIGHT
+                )
+            )
+
+            preview_fps = preview_cap.get(
+                cv2.CAP_PROP_FPS
+            )
+
+            preview_frame_count = preview_cap.get(
+                cv2.CAP_PROP_FRAME_COUNT
+            )
+
+            preview_duration = (
+                preview_frame_count / preview_fps
+                if preview_fps > 0
+                else 0
+            )
+
+            # Use a frame near the lower subtitle area
+            preview_time = min(
+                max(
+                    preview_duration * 0.5,
+                    0
+                ),
+                max(
+                    preview_duration - 0.1,
+                    0
+                )
+            )
+
+            preview_cap.set(
+                cv2.CAP_PROP_POS_MSEC,
+                preview_time * 1000
+            )
+
+            ret, preview_frame = (
+                preview_cap.read()
+            )
+
+            preview_cap.release()
+
+            if ret and preview_frame is not None:
+
+                # Convert BGR -> RGB
+                preview_frame = cv2.cvtColor(
+                    preview_frame,
+                    cv2.COLOR_BGR2RGB
+                )
+
+                # Keep preview manageable on mobile
+                max_preview_width = 700
+
+                preview_scale = min(
+                    1.0,
+                    max_preview_width
+                    / max(
+                        preview_frame.shape[1],
+                        1
+                    )
+                )
+
+                if preview_scale < 1.0:
+
+                    preview_frame = cv2.resize(
+                        preview_frame,
+                        (
+                            int(
+                                preview_frame.shape[1]
+                                * preview_scale
+                            ),
+                            int(
+                                preview_frame.shape[0]
+                                * preview_scale
+                            )
+                        ),
+                        interpolation=cv2.INTER_AREA
+                    )
+
+                canvas_width = preview_frame.shape[1]
+                canvas_height = preview_frame.shape[0]
+
+                # -------------------------------------------------
+                # Initial Blur Box
+                # -------------------------------------------------
+
+                if (
+                    "blur_box_x_px" not in st.session_state
+                    or
+                    "blur_box_y_px" not in st.session_state
+                    or
+                    "blur_box_w_px" not in st.session_state
+                    or
+                    "blur_box_h_px" not in st.session_state
+                ):
+
+                    initial_x = int(
+                        canvas_width * 0.10
+                    )
+
+                    initial_y = int(
+                        canvas_height * 0.78
+                    )
+
+                    initial_w = int(
+                        canvas_width * 0.80
+                    )
+
+                    initial_h = int(
+                        canvas_height * 0.18
+                    )
+
+                    st.session_state[
+                        "blur_box_x_px"
+                    ] = initial_x
+
+                    st.session_state[
+                        "blur_box_y_px"
+                    ] = initial_y
+
+                    st.session_state[
+                        "blur_box_w_px"
+                    ] = initial_w
+
+                    st.session_state[
+                        "blur_box_h_px"
+                    ] = initial_h
+
+
+                # -------------------------------------------------
+                # Convert saved box to canvas coordinates
+                # -------------------------------------------------
+
+                saved_x = int(
+                    st.session_state[
+                        "blur_box_x_px"
+                    ]
+                )
+
+                saved_y = int(
+                    st.session_state[
+                        "blur_box_y_px"
+                    ]
+                )
+
+                saved_w = int(
+                    st.session_state[
+                        "blur_box_w_px"
+                    ]
+                )
+
+                saved_h = int(
+                    st.session_state[
+                        "blur_box_h_px"
+                    ]
+                )
+
+                saved_x = max(
+                    0,
+                    min(
+                        saved_x,
+                        canvas_width - 2
+                    )
+                )
+
+                saved_y = max(
+                    0,
+                    min(
+                        saved_y,
+                        canvas_height - 2
+                    )
+                )
+
+                saved_w = max(
+                    2,
+                    min(
+                        saved_w,
+                        canvas_width - saved_x
+                    )
+                )
+
+                saved_h = max(
+                    2,
+                    min(
+                        saved_h,
+                        canvas_height - saved_y
+                    )
+                )
+
+
+                # -------------------------------------------------
+                # Interactive Canvas
+                # -------------------------------------------------
+
+                canvas_result = st_canvas(
+                    fill_color="rgba(255, 0, 0, 0.25)",
+                    stroke_width=3,
+                    stroke_color="#FF0000",
+                    background_image=preview_frame,
+                    update_streamlit=True,
+                    height=canvas_height,
+                    width=canvas_width,
+                    drawing_mode="rect",
+                    initial_drawing={
+                        "version": "4.4.0",
+                        "objects": [
+                            {
+                                "type": "rect",
+                                "left": saved_x,
+                                "top": saved_y,
+                                "width": saved_w,
+                                "height": saved_h,
+                                "fill": "rgba(255, 0, 0, 0.25)",
+                                "stroke": "#FF0000",
+                                "strokeWidth": 3,
+                                "scaleX": 1,
+                                "scaleY": 1,
+                                "angle": 0
+                            }
+                        ]
+                    },
+                    key="blur_canvas"
+                )
+
+
+                # -------------------------------------------------
+                # Read Interactive Box
+                # -------------------------------------------------
+
+                if (
+                    canvas_result is not None
+                    and
+                    canvas_result.json_data is not None
+                ):
+
+                    objects = (
+                        canvas_result
+                        .json_data
+                        .get(
+                            "objects",
+                            []
+                        )
+                    )
+
+                    if objects:
+
+                        rect = objects[-1]
+
+                        rect_left = float(
+                            rect.get(
+                                "left",
+                                saved_x
+                            )
+                        )
+
+                        rect_top = float(
+                            rect.get(
+                                "top",
+                                saved_y
+                            )
+                        )
+
+                        rect_width = float(
+                            rect.get(
+                                "width",
+                                saved_w
+                            )
+                        )
+
+                        rect_height = float(
+                            rect.get(
+                                "height",
+                                saved_h
+                            )
+                        )
+
+                        scale_x = float(
+                            rect.get(
+                                "scaleX",
+                                1
+                            )
+                        )
+
+                        scale_y = float(
+                            rect.get(
+                                "scaleY",
+                                1
+                            )
+                        )
+
+                        rect_width *= scale_x
+                        rect_height *= scale_y
+
+                        rect_left = max(
+                            0,
+                            min(
+                                rect_left,
+                                canvas_width - 2
+                            )
+                        )
+
+                        rect_top = max(
+                            0,
+                            min(
+                                rect_top,
+                                canvas_height - 2
+                            )
+                        )
+
+                        rect_width = max(
+                            2,
+                            min(
+                                rect_width,
+                                canvas_width - rect_left
+                            )
+                        )
+
+                        rect_height = max(
+                            2,
+                            min(
+                                rect_height,
+                                canvas_height - rect_top
+                            )
+                        )
+
+                        st.session_state[
+                            "blur_box_x_px"
+                        ] = rect_left
+
+                        st.session_state[
+                            "blur_box_y_px"
+                        ] = rect_top
+
+                        st.session_state[
+                            "blur_box_w_px"
+                        ] = rect_width
+
+                        st.session_state[
+                            "blur_box_h_px"
+                        ] = rect_height
+
+
+                # -------------------------------------------------
+                # Convert Preview Box -> Percentage
+                # -------------------------------------------------
+
+                blur_x = (
+                    float(
+                        st.session_state[
+                            "blur_box_x_px"
+                        ]
+                    )
+                    / canvas_width
+                    * 100
+                )
+
+                blur_y = (
+                    float(
+                        st.session_state[
+                            "blur_box_y_px"
+                        ]
+                    )
+                    / canvas_height
+                    * 100
+                )
+
+                blur_width = (
+                    float(
+                        st.session_state[
+                            "blur_box_w_px"
+                        ]
+                    )
+                    / canvas_width
+                    * 100
+                )
+
+                blur_height = (
+                    float(
+                        st.session_state[
+                            "blur_box_h_px"
+                        ]
+                    )
+                    / canvas_height
+                    * 100
+                )
+
+
+                # Save exact percentages
+                st.session_state[
+                    "main_blur_x_value"
+                ] = blur_x
+
+                st.session_state[
+                    "main_blur_y_value"
+                ] = blur_y
+
+                st.session_state[
+                    "main_blur_width_value"
+                ] = blur_width
+
+                st.session_state[
+                    "main_blur_height_value"
+                ] = blur_height
+
+
+                st.success(
+                    "✅ Blur Box position saved."
+                )
+
+                st.caption(
+                    f"X: {blur_x:.1f}%  |  "
+                    f"Y: {blur_y:.1f}%  |  "
+                    f"W: {blur_width:.1f}%  |  "
+                    f"H: {blur_height:.1f}%"
+                )
+
+            else:
+
+                st.error(
+                    "❌ Could not extract preview frame."
+                )
+
+        else:
+
+            st.error(
+                "❌ Could not open video for Blur Preview."
+            )
+
+
+    # ---------------------------------------------------------
+    # Blur Strength
+    # ---------------------------------------------------------
 
     blur_strength = st.slider(
         "💪 Blur Strength",
@@ -755,12 +1200,46 @@ if blur_enabled:
         key="main_blur_strength"
     )
 
+
+    # ---------------------------------------------------------
+    # Use Interactive Values
+    # ---------------------------------------------------------
+
+    blur_x = float(
+        st.session_state.get(
+            "main_blur_x_value",
+            10.0
+        )
+    )
+
+    blur_y = float(
+        st.session_state.get(
+            "main_blur_y_value",
+            78.0
+        )
+    )
+
+    blur_width = float(
+        st.session_state.get(
+            "main_blur_width_value",
+            80.0
+        )
+    )
+
+    blur_height = float(
+        st.session_state.get(
+            "main_blur_height_value",
+            18.0
+        )
+    )
+
+
     st.info(
-        f"🔲 Blur Area: "
-        f"X {blur_x}% | "
-        f"Y {blur_y}% | "
-        f"W {blur_width}% | "
-        f"H {blur_height}% | "
+        f"🔲 Selected Blur Area: "
+        f"X {blur_x:.1f}% | "
+        f"Y {blur_y:.1f}% | "
+        f"W {blur_width:.1f}% | "
+        f"H {blur_height:.1f}% | "
         f"Strength {blur_strength}"
     )
 
@@ -1470,10 +1949,6 @@ st.subheader(
 
 if "myanmar_recap" in st.session_state:
 
-    # =====================================================
-    # SELECT VOICE
-    # =====================================================
-
     if voice_gender.startswith("👩"):
 
         selected_voice = (
@@ -1485,11 +1960,6 @@ if "myanmar_recap" in st.session_state:
         selected_voice = (
             "my-MM-ThihaNeural"
         )
-
-
-    # =====================================================
-    # EDGE-TTS RATE
-    # =====================================================
 
     if float(voice_speed) == 1.0:
 
@@ -1503,17 +1973,11 @@ if "myanmar_recap" in st.session_state:
 
         tts_rate = "+20%"
 
-
     st.caption(
         "CPU optimized • "
         "Natural TTS crossfade • "
         "Actual TTS duration used for subtitle timing"
     )
-
-
-    # =====================================================
-    # GENERATE VOICEOVER
-    # =====================================================
 
     if st.button(
         "🎙️ Generate Myanmar Voiceover"
@@ -1537,11 +2001,6 @@ if "myanmar_recap" in st.session_state:
 
                 st.stop()
 
-
-            # =================================================
-            # Split narration
-            # =================================================
-
             chunks = split_myanmar_text(
                 text,
                 max_chars=100
@@ -1560,11 +2019,6 @@ if "myanmar_recap" in st.session_state:
                 f"{len(chunks)} voice segments."
             )
 
-
-            # =================================================
-            # WORKING DIRECTORY
-            # =================================================
-
             work_dir = tempfile.mkdtemp(
                 prefix="movie_recap_voice_"
             )
@@ -1576,11 +2030,6 @@ if "myanmar_recap" in st.session_state:
             progress = st.progress(
                 0
             )
-
-
-            # =================================================
-            # TTS GENERATION
-            # =================================================
 
             async def create_all_tts():
 
@@ -1613,15 +2062,9 @@ if "myanmar_recap" in st.session_state:
 
                 return results
 
-
             raw_files = asyncio.run(
                 create_all_tts()
             )
-
-
-            # =================================================
-            # MEASURE DURATIONS
-            # =================================================
 
             for index, raw_file in enumerate(
                 raw_files
@@ -1640,17 +2083,10 @@ if "myanmar_recap" in st.session_state:
                     / len(raw_files)
                 )
 
-
-            # =================================================
-            # NATURAL CROSSFADE
-            # =================================================
-
             TTS_CROSSFADE = 0.06
 
             normalized_files = []
 
-
-            # Normalize every TTS segment first.
             for index, raw_file in enumerate(
                 raw_files
             ):
@@ -1688,11 +2124,6 @@ if "myanmar_recap" in st.session_state:
                 normalized_files.append(
                     normalized_file
                 )
-
-
-            # =================================================
-            # COMBINE WITH ACROSSFADE
-            # =================================================
 
             combined_audio = os.path.join(
                 work_dir,
@@ -1787,11 +2218,6 @@ if "myanmar_recap" in st.session_state:
                         combine_result.stderr[-3000:]
                     )
 
-
-            # =================================================
-            # FINAL MP3
-            # =================================================
-
             final_voice_file = os.path.join(
                 work_dir,
                 "myanmar_voiceover.mp3"
@@ -1819,19 +2245,9 @@ if "myanmar_recap" in st.session_state:
                     convert_result.stderr[-3000:]
                 )
 
-
-            # =================================================
-            # ACTUAL FINAL DURATION
-            # =================================================
-
             voice_duration = get_audio_duration(
                 final_voice_file
             )
-
-
-            # =================================================
-            # SUBTITLE TIMING
-            # =================================================
 
             subtitle_data = []
 
@@ -1897,11 +2313,6 @@ if "myanmar_recap" in st.session_state:
                     0
                 )
 
-
-            # =================================================
-            # SESSION STATE
-            # =================================================
-
             st.session_state[
                 "voiceover_file"
             ] = final_voice_file
@@ -1935,11 +2346,6 @@ if "myanmar_recap" in st.session_state:
             st.session_state[
                 "tts_rate"
             ] = tts_rate
-
-
-            # =================================================
-            # RESULTS
-            # =================================================
 
             st.success(
                 f"✅ Myanmar {voice_gender} voiceover generated!"
@@ -2335,13 +2741,11 @@ if (
                     ]
                 )
 
-
             voice_file = (
                 st.session_state[
                     "voiceover_file"
                 ]
             )
-
 
             # =================================================
             # VIDEO DURATION
@@ -2350,7 +2754,6 @@ if (
             video_duration = get_audio_duration(
                 original_video
             )
-
 
             # =================================================
             # VOICEOVER DURATION
@@ -2368,7 +2771,6 @@ if (
                 f"🎙️ Voiceover: "
                 f"{voice_duration:.2f} sec"
             )
-
 
             # =================================================
             # FREEZE SETTINGS
@@ -2392,7 +2794,6 @@ if (
 
                 freeze_time = 0
 
-
             # =================================================
             # OUTPUT DIMENSIONS / FONT SETTINGS
             # =================================================
@@ -2410,7 +2811,6 @@ if (
                     1024
                 )
             )
-
 
             if aspect_ratio == "Original":
 
@@ -2450,13 +2850,11 @@ if (
                 output_width = 768
                 output_height = 1024
 
-
             selected_font_name = (
                 subtitle_font
             )
 
             font_dir = None
-
 
             if (
                 subtitle_font == "Custom Font"
@@ -2492,7 +2890,6 @@ if (
                     "CustomFont"
                 )
 
-
             subtitle_wrap_chars = (
                 24
                 if output_height >= output_width
@@ -2505,7 +2902,6 @@ if (
                     output_height * 0.055
                 )
             )
-
 
             # =================================================
             # ASS SUBTITLES
@@ -2543,7 +2939,6 @@ if (
                 "Name, MarginL, MarginR, MarginV, "
                 "Effect, Text\n"
             )
-
 
             for item in st.session_state[
                 "subtitle_data"
@@ -2586,12 +2981,10 @@ if (
                     f"{text}\n"
                 )
 
-
             ass_file = os.path.join(
                 tempfile.gettempdir(),
                 "myanmar_subtitles.ass"
             )
-
 
             with open(
                 ass_file,
@@ -2603,6 +2996,109 @@ if (
                     ass_content
                 )
 
+            # =================================================
+            # BLUR SETTINGS
+            # =================================================
+
+            if blur_enabled:
+
+                blur_x_value = float(
+                    st.session_state.get(
+                        "main_blur_x_value",
+                        10.0
+                    )
+                )
+
+                blur_y_value = float(
+                    st.session_state.get(
+                        "main_blur_y_value",
+                        78.0
+                    )
+                )
+
+                blur_width_value = float(
+                    st.session_state.get(
+                        "main_blur_width_value",
+                        80.0
+                    )
+                )
+
+                blur_height_value = float(
+                    st.session_state.get(
+                        "main_blur_height_value",
+                        18.0
+                    )
+                )
+
+                blur_x_px = int(
+                    output_width
+                    * blur_x_value
+                    / 100.0
+                )
+
+                blur_y_px = int(
+                    output_height
+                    * blur_y_value
+                    / 100.0
+                )
+
+                blur_width_px = int(
+                    output_width
+                    * blur_width_value
+                    / 100.0
+                )
+
+                blur_height_px = int(
+                    output_height
+                    * blur_height_value
+                    / 100.0
+                )
+
+                # Force even dimensions
+                blur_width_px = max(
+                    2,
+                    blur_width_px
+                    - blur_width_px % 2
+                )
+
+                blur_height_px = max(
+                    2,
+                    blur_height_px
+                    - blur_height_px % 2
+                )
+
+                blur_x_px = max(
+                    0,
+                    min(
+                        blur_x_px,
+                        output_width
+                        - blur_width_px
+                    )
+                )
+
+                blur_y_px = max(
+                    0,
+                    min(
+                        blur_y_px,
+                        output_height
+                        - blur_height_px
+                    )
+                )
+
+                blur_strength_value = max(
+                    1,
+                    int(
+                        blur_strength
+                    )
+                )
+
+                st.info(
+                    f"🔲 Final Blur: "
+                    f"X {blur_x_value:.1f}% | "
+                    f"Y {blur_y_value:.1f}% | "
+                    f"W {blur_width_value:.1f}% | "
+                    f"H {blur_height_value:.1f}%"
+                )
 
             # =================================================
             # VIDEO FILTER
@@ -2612,6 +3108,76 @@ if (
 
             labels = []
 
+            # -------------------------------------------------
+            # Helper: blur a scaled video stream
+            #
+            # IMPORTANT:
+            # Blur is inserted BEFORE zoompan.
+            # Therefore the blur area belongs to the video
+            # frame and zooms together with the freeze frame.
+            # -------------------------------------------------
+
+            def make_blur_filter(
+                input_label,
+                output_label
+            ):
+
+                if not blur_enabled:
+
+                    filter_parts.append(
+                        f"{input_label}"
+                        f"format=yuv420p"
+                        f"{output_label}"
+                    )
+
+                    return
+
+                filter_parts.append(
+                    f"{input_label}"
+                    f"split=2"
+                    f"[blurbase{output_label.strip('[]')}]"
+                    f"[cleanbase{output_label.strip('[]')}]"
+                )
+
+                blurbase_name = (
+                    f"[blurbase{output_label.strip('[]')}]"
+                )
+
+                cleanbase_name = (
+                    f"[cleanbase{output_label.strip('[]')}]"
+                )
+
+                blurred_name = (
+                    f"[blurred{output_label.strip('[]')}]"
+                )
+
+                filter_parts.append(
+                    blurbase_name
+                    + f"crop="
+                    f"{blur_width_px}:"
+                    f"{blur_height_px}:"
+                    f"{blur_x_px}:"
+                    f"{blur_y_px},"
+                    f"boxblur="
+                    f"luma_radius={blur_strength_value}:"
+                    f"luma_power=2:"
+                    f"chroma_radius={blur_strength_value}:"
+                    f"chroma_power=2"
+                    + blurred_name
+                )
+
+                filter_parts.append(
+                    cleanbase_name
+                    + blurred_name
+                    + f"overlay="
+                    f"{blur_x_px}:"
+                    f"{blur_y_px}"
+                    + output_label
+                )
+
+            # -------------------------------------------------
+            # Build Normal + Freeze segments
+            # -------------------------------------------------
 
             if freeze_enabled:
 
@@ -2621,7 +3187,6 @@ if (
                         / interval
                     )
                 )
-
 
                 for i in range(
                     segment_count
@@ -2636,13 +3201,16 @@ if (
                         video_duration
                     )
 
-
                     normal_label = (
-                        f"normal{i}"
+                        f"[normal{i}]"
                     )
 
+                    normal_scaled_label = (
+                        f"[normal_scaled{i}]"
+                    )
 
-                    normal_filter = (
+                    # Normal segment -> scale first
+                    filter_parts.append(
                         f"[0:v]"
                         f"trim="
                         f"start={start}:"
@@ -2652,18 +3220,18 @@ if (
                         f"{output_width}:"
                         f"{output_height},"
                         f"setsar=1"
-                        f"[{normal_label}]"
+                        f"{normal_scaled_label}"
                     )
 
-
-                    filter_parts.append(
-                        normal_filter
+                    # Apply blur BEFORE concat
+                    make_blur_filter(
+                        normal_scaled_label,
+                        normal_label
                     )
 
                     labels.append(
-                        f"[{normal_label}]"
+                        normal_label
                     )
-
 
                     # =============================================
                     # FREEZE + ZOOM
@@ -2671,20 +3239,18 @@ if (
 
                     if end < video_duration:
 
+                        freeze_source_label = (
+                            f"[freeze_source{i}]"
+                        )
+
                         freeze_label = (
-                            f"freeze{i}"
+                            f"[freeze{i}]"
                         )
 
                         frame_time = max(
                             start,
                             end - 0.10
                         )
-
-
-                        # -------------------------------------------------
-                        # Freeze duration -> frames
-                        # 30 FPS
-                        # -------------------------------------------------
 
                         freeze_frames = max(
                             2,
@@ -2699,7 +3265,6 @@ if (
                             1,
                             freeze_frames // 2
                         )
-
 
                         if freeze_frames <= 2:
 
@@ -2729,8 +3294,12 @@ if (
                                 f")"
                             )
 
+                        # -----------------------------------------
+                        # Extract ONE actual frame
+                        # Scale to final size
+                        # -----------------------------------------
 
-                        freeze_filter = (
+                        filter_parts.append(
                             f"[0:v]"
                             f"trim="
                             f"start={frame_time}:"
@@ -2740,8 +3309,70 @@ if (
                             f"scale="
                             f"{output_width}:"
                             f"{output_height},"
-                            f"setsar=1,"
-                            f"zoompan="
+                            f"setsar=1"
+                            f"{freeze_source_label}"
+                        )
+
+                        # -----------------------------------------
+                        # BLUR IS APPLIED HERE
+                        #
+                        # This is before zoompan.
+                        # So zoompan zooms the already blurred frame.
+                        # -----------------------------------------
+
+                        freeze_blur_label = (
+                            f"[freeze_blur{i}]"
+                        )
+
+                        if blur_enabled:
+
+                            filter_parts.append(
+                                freeze_source_label
+                                + "split=2"
+                                f"[freeze_blurbase{i}]"
+                                f"[freeze_cleanbase{i}]"
+                            )
+
+                            filter_parts.append(
+                                f"[freeze_blurbase{i}]"
+                                f"crop="
+                                f"{blur_width_px}:"
+                                f"{blur_height_px}:"
+                                f"{blur_x_px}:"
+                                f"{blur_y_px},"
+                                f"boxblur="
+                                f"luma_radius="
+                                f"{blur_strength_value}:"
+                                f"luma_power=2:"
+                                f"chroma_radius="
+                                f"{blur_strength_value}:"
+                                f"chroma_power=2"
+                                f"[freeze_blurredarea{i}]"
+                            )
+
+                            filter_parts.append(
+                                f"[freeze_cleanbase{i}]"
+                                f"[freeze_blurredarea{i}]"
+                                f"overlay="
+                                f"{blur_x_px}:"
+                                f"{blur_y_px}"
+                                f"{freeze_blur_label}"
+                            )
+
+                        else:
+
+                            filter_parts.append(
+                                freeze_source_label
+                                + freeze_blur_label
+                            )
+
+                        # -----------------------------------------
+                        # Zoom the blurred frame
+                        # -----------------------------------------
+
+                        filter_parts.append(
+                            freeze_blur_label
+                            + f"zoompan="
                             f"z='{zoom_expression}':"
                             f"d={freeze_frames}:"
                             f"x='iw/2-(iw/zoom/2)':"
@@ -2750,23 +3381,16 @@ if (
                             f"{output_width}x"
                             f"{output_height}:"
                             f"fps=30"
-                            f"[{freeze_label}]"
-                        )
-
-
-                        filter_parts.append(
-                            freeze_filter
+                            + freeze_label
                         )
 
                         labels.append(
-                            f"[{freeze_label}]"
+                            freeze_label
                         )
-
 
                 concat_inputs = "".join(
                     labels
                 )
-
 
                 concat_filter = (
                     f"{concat_inputs}"
@@ -2779,132 +3403,67 @@ if (
                     f"[basevideo]"
                 )
 
-
                 filter_parts.append(
                     concat_filter
                 )
 
-
             else:
 
-                filter_parts.append(
-                    "[0:v]"
-                    f"scale="
-                    f"{output_width}:"
-                    f"{output_height},"
-                    "setsar=1,"
-                    "format=yuv420p"
-                    "[basevideo]"
-                )
+                if blur_enabled:
 
-
-            # =================================================
-            # ORIGINAL SUBTITLE BLUR
-            # =================================================
-
-            video_before_subtitle = "[basevideo]"
-
-            if blur_enabled:
-
-                # Convert percentage positions to output pixels.
-                blur_x_px = int(
-                    output_width
-                    * float(blur_x)
-                    / 100.0
-                )
-
-                blur_y_px = int(
-                    output_height
-                    * float(blur_y)
-                    / 100.0
-                )
-
-                blur_width_px = int(
-                    output_width
-                    * float(blur_width)
-                    / 100.0
-                )
-
-                blur_height_px = int(
-                    output_height
-                    * float(blur_height)
-                    / 100.0
-                )
-
-                # Keep dimensions valid and inside the video.
-                blur_width_px = max(
-                    2,
-                    min(
-                        blur_width_px,
-                        output_width
+                    filter_parts.append(
+                        "[0:v]"
+                        f"scale="
+                        f"{output_width}:"
+                        f"{output_height},"
+                        "setsar=1"
+                        "[scaledvideo]"
                     )
-                )
 
-                blur_height_px = max(
-                    2,
-                    min(
-                        blur_height_px,
-                        output_height
+                    filter_parts.append(
+                        "[scaledvideo]"
+                        "split=2"
+                        "[blurbase_single]"
+                        "[cleanbase_single]"
                     )
-                )
 
-                blur_x_px = max(
-                    0,
-                    min(
-                        blur_x_px,
-                        output_width
-                        - blur_width_px
+                    filter_parts.append(
+                        "[blurbase_single]"
+                        f"crop="
+                        f"{blur_width_px}:"
+                        f"{blur_height_px}:"
+                        f"{blur_x_px}:"
+                        f"{blur_y_px},"
+                        f"boxblur="
+                        f"luma_radius="
+                        f"{blur_strength_value}:"
+                        f"luma_power=2:"
+                        f"chroma_radius="
+                        f"{blur_strength_value}:"
+                        f"chroma_power=2"
+                        "[blurredarea_single]"
                     )
-                )
 
-                blur_y_px = max(
-                    0,
-                    min(
-                        blur_y_px,
-                        output_height
-                        - blur_height_px
+                    filter_parts.append(
+                        "[cleanbase_single]"
+                        "[blurredarea_single]"
+                        f"overlay="
+                        f"{blur_x_px}:"
+                        f"{blur_y_px}"
+                        "[basevideo]"
                     )
-                )
 
-                blur_strength_value = max(
-                    1,
-                    int(blur_strength)
-                )
+                else:
 
-                filter_parts.append(
-                    "[basevideo]"
-                    "split=2"
-                    "[blurbase][cleanbase]"
-                )
-
-                filter_parts.append(
-                    "[blurbase]"
-                    f"crop="
-                    f"{blur_width_px}:"
-                    f"{blur_height_px}:"
-                    f"{blur_x_px}:"
-                    f"{blur_y_px},"
-                    f"boxblur="
-                    f"luma_radius={blur_strength_value}:"
-                    f"luma_power=2:"
-                    f"chroma_radius={blur_strength_value}:"
-                    f"chroma_power=2"
-                    "[blurredarea]"
-                )
-
-                filter_parts.append(
-                    "[cleanbase]"
-                    "[blurredarea]"
-                    f"overlay="
-                    f"{blur_x_px}:"
-                    f"{blur_y_px}"
-                    "[blurredvideo]"
-                )
-
-                video_before_subtitle = (
-                    "[blurredvideo]"
-                )
-
+                    filter_parts.append(
+                        "[0:v]"
+                        f"scale="
+                        f"{output_width}:"
+                        f"{output_height},"
+                        "setsar=1,"
+                        "format=yuv420p"
+                        "[basevideo]"
+                    )
 
             # =================================================
             # SUBTITLE OVERLAY
@@ -2920,13 +3479,11 @@ if (
                     f":fontsdir={font_dir}"
                 )
 
-
             filter_parts.append(
-                video_before_subtitle
+                "[basevideo]"
                 + ass_filter
                 + "[vout]"
             )
-
 
             # =================================================
             # DURATION CALCULATION
@@ -2943,7 +3500,6 @@ if (
 
                 actual_freeze_count = 0
 
-
             base_video_duration = (
                 video_duration
                 +
@@ -2953,25 +3509,21 @@ if (
                 )
             )
 
-
             extra_duration = max(
                 0.0,
                 voice_duration
                 - base_video_duration
             )
 
-
             st.write(
                 f"🎬 Base Video Duration: "
                 f"{base_video_duration:.2f} sec"
             )
 
-
             st.write(
                 f"➕ Extra Hold Duration: "
                 f"{extra_duration:.2f} sec"
             )
-
 
             # =================================================
             # EXTEND FINAL FRAME
@@ -3000,7 +3552,6 @@ if (
                     "[vout]"
                 )
 
-
             # =================================================
             # FILTER COMPLEX
             # =================================================
@@ -3008,7 +3559,6 @@ if (
             filter_complex = ";".join(
                 filter_parts
             )
-
 
             # =================================================
             # OUTPUT
@@ -3018,7 +3568,6 @@ if (
                 tempfile.gettempdir(),
                 "final_movie_recap.mp4"
             )
-
 
             command = [
                 "ffmpeg",
@@ -3050,7 +3599,6 @@ if (
                 output_video
             ]
 
-
             # =================================================
             # EXPORT
             # =================================================
@@ -3065,13 +3613,15 @@ if (
                     "🔲 Original subtitle blur is enabled."
                 )
 
+                st.info(
+                    "🔍 Blur is attached before Freeze + Zoom."
+                )
 
             result = subprocess.run(
                 command,
                 capture_output=True,
                 text=True
             )
-
 
             if result.returncode != 0:
 
@@ -3090,36 +3640,30 @@ if (
                     output_video
                 )
 
-
                 st.success(
                     "✅ Final Recap Video "
                     "Created Successfully!"
                 )
-
 
                 st.info(
                     f"🎬 Final Video Duration: "
                     f"{final_duration:.2f} sec"
                 )
 
-
                 st.info(
                     f"🎙️ Voiceover Duration: "
                     f"{voice_duration:.2f} sec"
                 )
-
 
                 duration_difference = (
                     final_duration
                     - voice_duration
                 )
 
-
                 st.info(
                     f"⏱️ Duration Difference: "
                     f"{duration_difference:+.2f} sec"
                 )
-
 
                 with open(
                     output_video,
@@ -3134,7 +3678,6 @@ if (
                         ),
                         mime="video/mp4"
                     )
-
 
         except Exception as e:
 
