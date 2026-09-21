@@ -10,6 +10,8 @@ import asyncio
 import json
 import re
 import shutil
+import io
+from PIL import Image
 
 
 # =========================================================
