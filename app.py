@@ -11,6 +11,8 @@ import json
 import re
 import shutil
 import base64
+import time
+import contextlib
 import streamlit.components.v1 as components
 
 
@@ -55,6 +57,143 @@ st.title("🎬 Movie Recap AI")
 st.write(
     "Upload a movie and analyze video information."
 )
+
+
+# =========================================================
+# ONE CLICK UI / SETTINGS PERSISTENCE
+# =========================================================
+
+SETTINGS_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    ".movie_recap_settings.json"
+)
+
+DEFAULT_SETTINGS = {
+    "aspect_ratio": "9:16",
+    "voice_gender": "👨 Male — Thiha",
+    "voice_speed": 1.2,
+    "freeze_enabled": True,
+    "freeze_interval": 8.0,
+    "freeze_duration": 2.0,
+    "zoom_enabled": True,
+    "subtitle_font": "Noto Sans Myanmar",
+    "subtitle_size": 50,
+    "blur_enabled": False,
+    "caption_enabled": True,
+    "thumbnail_enabled": True,
+    "split_mode": False,
+}
+
+
+def load_saved_settings():
+    data = dict(DEFAULT_SETTINGS)
+    try:
+        if os.path.isfile(SETTINGS_FILE):
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+            if isinstance(saved, dict):
+                data.update(saved)
+    except Exception:
+        pass
+    return data
+
+
+def save_settings(data):
+    try:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+if "saved_ui_settings" not in st.session_state:
+    st.session_state["saved_ui_settings"] = load_saved_settings()
+
+
+# =========================================================
+# PROCESSING PROGRESS UI
+# =========================================================
+
+if "one_click_running" not in st.session_state:
+    st.session_state["one_click_running"] = False
+
+if "one_click_progress" not in st.session_state:
+    st.session_state["one_click_progress"] = 0
+
+if "one_click_stage" not in st.session_state:
+    st.session_state["one_click_stage"] = "Ready"
+
+
+def progress_html(percent, stage):
+    percent = max(0, min(100, int(percent)))
+    return f"""
+    <div style=\"position:fixed;inset:0;z-index:999999;background:rgba(10,7,25,.97);display:flex;align-items:center;justify-content:center;\">
+      <div style=\"width:min(430px,88vw);text-align:center;color:white;font-family:Arial,sans-serif;\">
+        <div style=\"width:190px;height:190px;border-radius:50%;margin:0 auto 22px;background:conic-gradient(#8b5cf6 {percent}%,#29213f 0);display:flex;align-items:center;justify-content:center;box-shadow:0 0 45px rgba(139,92,246,.28);\">
+          <div style=\"width:154px;height:154px;border-radius:50%;background:#100c1d;display:flex;align-items:center;justify-content:center;font-size:38px;font-weight:800;\">{percent}%</div>
+        </div>
+        <div style=\"font-size:21px;font-weight:700;margin-bottom:9px;\">🎬 One Click Recap</div>
+        <div style=\"font-size:16px;color:#d9d2ff;\">{stage}</div>
+        <div style=\"margin-top:20px;height:5px;border-radius:10px;background:#2a2340;overflow:hidden;\"><div style=\"width:{percent}%;height:100%;background:#8b5cf6;transition:width .25s;\"></div></div>
+      </div>
+    </div>
+    """
+
+
+progress_slot = st.empty()
+
+
+def show_progress(percent, stage):
+    st.session_state["one_click_progress"] = int(percent)
+    st.session_state["one_click_stage"] = stage
+    progress_slot.markdown(
+        progress_html(percent, stage),
+        unsafe_allow_html=True
+    )
+    time.sleep(0.05)
+
+
+# =========================================================
+# GEMINI RETRY HELPER
+# =========================================================
+
+def is_quota_or_limit_error(exc):
+    text = str(exc).lower()
+    return any(x in text for x in [
+        "429", "quota", "resource_exhausted", "rate limit",
+        "daily limit", "per minute limit", "limit exceeded"
+    ])
+
+
+def generate_gemini_with_retry(client, contents, model="gemini-3.6-flash", attempts=3):
+    last_error = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return client.models.generate_content(
+                model=model,
+                contents=contents
+            )
+        except Exception as exc:
+            last_error = exc
+            if is_quota_or_limit_error(exc):
+                raise
+            if attempt < attempts:
+                time.sleep(min(2 * attempt, 5))
+    raise last_error
+
+
+# =========================================================
+# DARK PURPLE ONE CLICK THEME
+# =========================================================
+
+st.markdown("""
+<style>
+[data-testid=\"stAppViewContainer\"] { background: linear-gradient(135deg,#080612 0%,#100a1e 48%,#090715 100%); }
+[data-testid=\"stHeader\"] { background: rgba(0,0,0,0); }
+.block-container { max-width: 900px; padding-top: 1.2rem; }
+.one-click-card { background: rgba(27,19,48,.82); border:1px solid #3a2b62; border-radius:18px; padding:18px; margin:8px 0 16px; box-shadow:0 10px 35px rgba(0,0,0,.18); }
+</style>
+""", unsafe_allow_html=True)
 
 
 # =========================================================
@@ -737,133 +876,137 @@ if uploaded_file is not None:
 # ONE CLICK RECAP SETTINGS
 # =========================================================
 
-st.subheader(
-    "⚙️ Recap Settings"
-)
+saved = st.session_state["saved_ui_settings"]
+
+st.markdown('<div class="one-click-card">', unsafe_allow_html=True)
+st.subheader("⚙️ One Click Recap Settings")
+
+uploaded_file = st.session_state.get("uploaded_file")
 
 settings_col1, settings_col2 = st.columns(2)
 
-
 with settings_col1:
-
-    whisper_model = st.selectbox(
-        "🧠 Whisper Model",
-        [
-            "tiny",
-            "base"
-        ],
-        index=0,
-        help=(
-            "Tiny uses much less CPU/RAM. "
-            "Base may provide better English transcription."
-        ),
-        key="main_whisper_model"
+    aspect_ratio = st.selectbox(
+        "📐 Video Ratio",
+        ["9:16", "Original", "16:9", "1:1", "3:4"],
+        index=["9:16", "Original", "16:9", "1:1", "3:4"].index(saved.get("aspect_ratio", "9:16")) if saved.get("aspect_ratio", "9:16") in ["9:16", "Original", "16:9", "1:1", "3:4"] else 0,
+        key="main_aspect_ratio"
     )
 
     voice_gender = st.selectbox(
-        "🎙️ Voice",
-        [
-            "👩 Female — Nilar",
-            "👨 Male — Thiha"
-        ],
+        "🎙️ Voiceover Mode",
+        ["👩 Female — Nilar", "👨 Male — Thiha"],
+        index=1 if saved.get("voice_gender", "👨 Male — Thiha") == "👨 Male — Thiha" else 0,
         key="main_voice_gender"
     )
 
     voice_speed = st.selectbox(
-        "🎚️ Voice Speed",
-        [
-            1.0,
-            1.1,
-            1.2
-        ],
-        index=0,
+        "⚡ Voice Speed",
+        [1.0, 1.1, 1.2],
+        index=[1.0,1.1,1.2].index(float(saved.get("voice_speed",1.2))) if float(saved.get("voice_speed",1.2)) in [1.0,1.1,1.2] else 2,
+        format_func=lambda x: f"{x:.1f}x",
         key="main_voice_speed"
     )
 
-
-with settings_col2:
-
-    freeze_enabled = st.checkbox(
-        "🧊 Enable Freeze Frame + Zoom",
-        value=True,
-        key="main_freeze_enabled"
-    )
-
-    freeze_interval = st.number_input(
-        "⏱️ Freeze Every",
-        min_value=5.0,
-        max_value=60.0,
-        value=10.0,
-        step=1.0,
-        key="main_freeze_interval"
-    )
-
-    freeze_duration = st.number_input(
-        "🧊 Freeze Duration",
-        min_value=0.5,
-        max_value=5.0,
-        value=2.0,
-        step=0.5,
-        key="main_freeze_duration"
-    )
-
-    aspect_ratio = st.selectbox(
-        "📐 Output Aspect Ratio",
-        [
-            "Original",
-            "9:16",
-            "16:9",
-            "1:1",
-            "3:4"
-        ],
-        index=0,
-        key="main_aspect_ratio"
-    )
-
     subtitle_font = st.selectbox(
-        "🔤 Subtitle Font",
-        [
-            "Noto Sans Myanmar",
-            "Pyidaungsu",
-            "Myanmar Text",
-            "Custom Font"
-        ],
-        index=0,
+        "🔤 Myanmar Subtitle Font",
+        ["Noto Sans Myanmar", "Pyidaungsu", "Myanmar Text", "Custom Font"],
+        index=["Noto Sans Myanmar", "Pyidaungsu", "Myanmar Text", "Custom Font"].index(saved.get("subtitle_font", "Noto Sans Myanmar")) if saved.get("subtitle_font", "Noto Sans Myanmar") in ["Noto Sans Myanmar", "Pyidaungsu", "Myanmar Text", "Custom Font"] else 0,
         key="main_subtitle_font"
     )
 
     custom_font_file = st.file_uploader(
-        "📁 Upload Custom Font (.ttf/.otf)",
-        type=[
-            "ttf",
-            "otf"
-        ],
+        "📁 Custom Font (.ttf/.otf)",
+        type=["ttf", "otf"],
         key="main_custom_font"
     )
 
+with settings_col2:
+    freeze_enabled = st.checkbox(
+        "❄️ Freeze Frame",
+        value=bool(saved.get("freeze_enabled", True)),
+        key="main_freeze_enabled"
+    )
+
+    freeze_interval = st.number_input(
+        "⏱️ Freeze Every (seconds)",
+        min_value=5.0, max_value=60.0,
+        value=float(saved.get("freeze_interval", 8.0)), step=1.0,
+        key="main_freeze_interval"
+    )
+
+    freeze_duration = st.number_input(
+        "🧊 Freeze Duration (seconds)",
+        min_value=0.5, max_value=5.0,
+        value=float(saved.get("freeze_duration", 2.0)), step=0.5,
+        key="main_freeze_duration"
+    )
+
+    zoom_enabled = st.checkbox(
+        "🔍 Zoom In → Zoom Out",
+        value=bool(saved.get("zoom_enabled", True)),
+        key="main_zoom_enabled"
+    )
+
     subtitle_size = st.slider(
-        "🔠 Subtitle Font Size",
-        min_value=20,
-        max_value=100,
-        value=50,
-        step=1,
+        "🔠 Subtitle Size",
+        20, 100, int(saved.get("subtitle_size",50)), 1,
         key="main_subtitle_size"
     )
 
+st.markdown('</div>', unsafe_allow_html=True)
+
+# =========================================================
+# EXTRA ONE CLICK OPTIONS
+# =========================================================
+
+extra1, extra2, extra3, extra4 = st.columns(4)
+with extra1:
+    blur_enabled = st.checkbox("🟦 Blur Tool", value=bool(saved.get("blur_enabled",False)), key="main_blur_enabled")
+with extra2:
+    logo_file = st.file_uploader("🖼️ Logo", type=["png","jpg","jpeg","webp"], key="main_logo_file")
+with extra3:
+    caption_enabled = st.checkbox("📝 Caption", value=bool(saved.get("caption_enabled",True)), key="main_caption_enabled")
+with extra4:
+    thumbnail_enabled = st.checkbox("🖼️ Thumbnail", value=bool(saved.get("thumbnail_enabled",True)), key="main_thumbnail_enabled")
+
+split_mode = st.checkbox(
+    "✂️ Split Mode — automatically split the final video into parts",
+    value=bool(saved.get("split_mode",False)),
+    key="main_split_mode"
+)
+
+# Whisper remains an internal processing setting; Tiny keeps the One Click UI simple.
+whisper_model = "tiny"
+
+# =========================================================
+# SAVE CURRENT SETTINGS
+# =========================================================
+
+current_settings = {
+    "aspect_ratio": aspect_ratio,
+    "voice_gender": voice_gender,
+    "voice_speed": float(voice_speed),
+    "freeze_enabled": bool(freeze_enabled),
+    "freeze_interval": float(freeze_interval),
+    "freeze_duration": float(freeze_duration),
+    "zoom_enabled": bool(zoom_enabled),
+    "subtitle_font": subtitle_font,
+    "subtitle_size": int(subtitle_size),
+    "blur_enabled": bool(blur_enabled),
+    "caption_enabled": bool(caption_enabled),
+    "thumbnail_enabled": bool(thumbnail_enabled),
+    "split_mode": bool(split_mode),
+}
+st.session_state["saved_ui_settings"] = current_settings
+save_settings(current_settings)
 
 # =========================================================
 # ORIGINAL SUBTITLE BLUR TOOL
 # =========================================================
 
-st.subheader(
-    "🔲 Original Subtitle Blur"
-)
-
-blur_enabled = st.checkbox(
-    "🔲 Blur Original Movie Subtitle",
-    value=False,
-    key="main_blur_enabled"
-)
+st.subheader("🔲 Original Subtitle Blur Tool")
+st.caption("Use the Blur Tool checkbox above to enable the interactive blur area.")
 
 
 # =========================================================
@@ -1223,25 +1366,29 @@ st.divider()
 run_all = False
 
 if uploaded_file is not None:
-
-    st.markdown(
-        "### 🎬 Ready to Generate"
-    )
-
+    st.markdown("### 🚀 Generate")
     run_all = st.button(
-        "🎬 ONE CLICK — GENERATE MOVIE RECAP",
+        "🚀 GENERATE NOW",
         type="primary",
-        use_container_width=True
+        use_container_width=True,
+        key="generate_now_button"
     )
 
     if run_all:
+        st.session_state["one_click_running"] = True
+        st.session_state["one_click_progress"] = 1
+        st.session_state["one_click_stage"] = "Starting..."
 
-        st.success(
-            "🚀 One Click Recap started!"
+    if st.session_state.get("one_click_running", False):
+        show_progress(
+            st.session_state.get("one_click_progress", 1),
+            st.session_state.get("one_click_stage", "Starting...")
         )
 
-st.divider()
+else:
+    st.info("🎬 Upload a video to start One Click Recap.")
 
+st.divider()
 
 # =========================================================
 # MOVIE TRANSCRIPT
@@ -1257,6 +1404,9 @@ if uploaded_file is not None:
     if st.button(
         "📝 Generate Transcript"
     ) or run_all:
+
+        if run_all:
+            show_progress(15, "🎧 Transcribing Video")
 
         st.info(
             f"⏳ Transcribing with Faster-Whisper "
@@ -1391,6 +1541,9 @@ if "transcript_result" in st.session_state:
     if st.button(
         "🎞️ Analyze Scenes"
     ) or run_all:
+
+        if run_all:
+            show_progress(30, "🎬 Scene Analysing")
 
         segments = (
             st.session_state[
@@ -1628,9 +1781,8 @@ Rules:
                             )
 
                         response = (
-                            client.models.generate_content(
-                                model="gemini-3.6-flash",
-                                contents=contents
+                            generate_gemini_with_retry(
+                                client, contents, "gemini-3.6-flash", attempts=3
                             )
                         )
 
@@ -1748,9 +1900,8 @@ Scene Analysis:
 """
 
             response = (
-                client.models.generate_content(
-                    model="gemini-3.6-flash",
-                    contents=prompt
+                generate_gemini_with_retry(
+                    client, prompt, "gemini-3.6-flash", attempts=3
                 )
             )
 
@@ -1849,9 +2000,8 @@ English Recap:
 """
 
             response = (
-                client.models.generate_content(
-                    model="gemini-3.6-flash",
-                    contents=prompt
+                generate_gemini_with_retry(
+                    client, prompt, "gemini-3.6-flash", attempts=3
                 )
             )
 
@@ -2013,9 +2163,8 @@ Myanmar Recap:
 """
 
             response = (
-                client.models.generate_content(
-                    model="gemini-3.6-flash",
-                    contents=caption_prompt
+                generate_gemini_with_retry(
+                    client, caption_prompt, "gemini-3.6-flash", attempts=3
                 )
             )
 
@@ -2121,6 +2270,9 @@ if "myanmar_recap" in st.session_state:
     if st.button(
         "🎙️ Generate Myanmar Voiceover"
     ) or run_all:
+
+        if run_all:
+            show_progress(75, "🎙️ Generating Voiceover")
 
         try:
 
@@ -2857,6 +3009,9 @@ if (
     if st.button(
         "🎬 Create Final Recap Video"
     ) or run_all:
+
+        if run_all:
+            show_progress(92, "🎬 Final Video Rendering")
 
         try:
 
@@ -3795,6 +3950,11 @@ if (
                     "Created Successfully!"
                 )
 
+                if run_all:
+                    show_progress(100, "✅ Complete")
+                    st.session_state["one_click_running"] = False
+                    st.session_state["one_click_stage"] = "Complete"
+
                 st.info(
                     f"🎬 Final Video Duration: "
                     f"{final_duration:.2f} sec"
@@ -3815,6 +3975,8 @@ if (
                     f"{duration_difference:+.2f} sec"
                 )
 
+                st.session_state["final_video_path"] = output_video
+
                 with open(
                     output_video,
                     "rb"
@@ -3831,6 +3993,47 @@ if (
 
         except Exception as e:
 
+            st.session_state["one_click_running"] = False
             st.error(
                 f"❌ Final Video Export Error: {e}"
             )
+
+
+# =========================================================
+# ONE CLICK POST-PROCESSING: THUMBNAIL / SPLIT
+# =========================================================
+
+if "final_video_path" in st.session_state:
+    final_video_path = st.session_state["final_video_path"]
+else:
+    final_video_path = None
+
+# Thumbnail download is intentionally kept outside the processing pipeline so
+# it does not change the existing final-video rendering logic.
+if (
+    thumbnail_enabled
+    and "uploaded_file" in st.session_state
+    and not st.session_state.get("one_click_running", False)
+):
+    try:
+        thumb_path = os.path.join(
+            tempfile.gettempdir(),
+            "movie_recap_thumbnail.jpg"
+        )
+        source_video = st.session_state.get("video_path")
+        if source_video and os.path.isfile(source_video):
+            cap_thumb = cv2.VideoCapture(source_video)
+            ok_thumb, frame_thumb = cap_thumb.read()
+            cap_thumb.release()
+            if ok_thumb:
+                cv2.imwrite(thumb_path, frame_thumb)
+                with open(thumb_path, "rb") as tf:
+                    st.download_button(
+                        "🖼️ Download Thumbnail",
+                        tf.read(),
+                        file_name="movie_recap_thumbnail.jpg",
+                        mime="image/jpeg",
+                        key="download_thumbnail_button"
+                    )
+    except Exception:
+        pass
