@@ -1838,20 +1838,32 @@ if "recap_script" in st.session_state:
 
             prompt = f"""
 Translate the following movie recap narration
-into natural spoken Myanmar Burmese.
+into natural spoken Myanmar Burmese for a voiceover.
 
 Rules:
 
-- Preserve the exact meaning.
-- Do not add story events.
-- Do not remove story events.
-- Keep chronological order.
-- Do not add explanation.
-- Do not add English.
+- Preserve the exact meaning and chronological order.
+- Do not add story events, facts, actions, characters, locations,
+  explanations, or opinions.
+- Do not remove important story events.
+- Do not expand the narration unnecessarily.
+- Keep approximately the same information density and overall length
+  as the English recap. The Myanmar version should NOT become
+  substantially longer just because the English is being translated.
+- Do not translate word-for-word when that sounds unnatural in Myanmar.
+- Use simple, natural, conversational Myanmar that sounds like a
+  human documentary/movie-recap narrator speaking.
+- Use natural sentence endings such as "တယ်", "ပါတယ်", and "နေပါတယ်"
+  according to context.
+- NEVER use "ဒယ်".
+- For ongoing actions, use natural forms such as "လုပ်နေပါတယ်",
+  "တူးနေပါတယ်", "ဆွဲထုတ်နေပါတယ်", or "ကြည့်နေပါတယ်" when appropriate.
+- Do not force the same sentence ending repeatedly.
+- Avoid overly formal, literary, awkward, or AI-sounding wording
+  when a simple spoken Myanmar expression is available.
+- Do not repeat the same action or information.
 - Write only the Myanmar narration.
-- Make it natural for voiceover.
-- Use "ဒယ်" instead of "တယ်" at sentence endings
-  where it sounds natural.
+- Do not add headings, labels, timestamps, quotation marks, or notes.
 
 English Recap:
 
