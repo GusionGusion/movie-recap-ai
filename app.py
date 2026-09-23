@@ -75,34 +75,89 @@ def is_temporary_gemini_error(exc):
     text = str(exc).lower()
     return any(x in text for x in [
         "503", "unavailable", "temporarily", "timeout",
-        "deadline exceeded", "service unavailable"
+        "deadline exceeded", "service unavailable",
+        "internal server error", "500"
     ])
 
 
-def generate_gemini_with_retry(client, contents, model="gemini-3.6-flash", attempts=2):
-    """Retry only temporary Gemini service errors; never retry quota/credit errors."""
+def is_model_unavailable_error(exc):
+    """Return True when trying another Gemini model may help."""
+    text = str(exc).lower()
+    return any(x in text for x in [
+        "503", "unavailable", "temporarily",
+        "service unavailable", "internal server error",
+        "500", "404", "not found", "model not found",
+        "unsupported model"
+    ])
+
+
+def generate_gemini_with_retry(
+    client,
+    contents,
+    model="gemini-3.6-flash",
+    attempts=2
+):
+    """
+    Generate Gemini content with automatic retry + model fallback.
+
+    429/quota/credit errors are never retried. Temporary 503/500/timeouts
+    are retried, then the next stable Flash model is tried automatically.
+    The requested model is always tried first.
+    """
+
+    fallback_models = [
+        "gemini-3.6-flash",
+        "gemini-3.7-flash",
+        "gemini-3.8-flash",
+        "gemini-3.5-flash"
+    ]
+
+    models_to_try = [model]
+    for fallback_model in fallback_models:
+        if fallback_model not in models_to_try:
+            models_to_try.append(fallback_model)
+
     last_error = None
 
-    for attempt in range(1, attempts + 1):
-        try:
-            return client.models.generate_content(
-                model=model,
-                contents=contents
-            )
-        except Exception as exc:
-            last_error = exc
+    for model_index, current_model in enumerate(models_to_try):
 
-            if is_quota_or_limit_error(exc):
-                raise
+        for attempt in range(1, attempts + 1):
 
-            if not is_temporary_gemini_error(exc):
-                raise
+            try:
+                response = client.models.generate_content(
+                    model=current_model,
+                    contents=contents
+                )
 
-            if attempt < attempts:
-                time.sleep(2 * attempt)
+                if model_index > 0:
+                    st.info(
+                        f"ℹ️ Gemini {model} is temporarily unavailable. "
+                        f"Automatically switched to {current_model}."
+                    )
+
+                return response
+
+            except Exception as exc:
+                last_error = exc
+
+                # Never retry or fallback on quota/credit errors.
+                if is_quota_or_limit_error(exc):
+                    raise
+
+                # Stop immediately for unrelated application/API errors.
+                if not is_model_unavailable_error(exc):
+                    raise
+
+                # Retry temporary availability errors before switching model.
+                if is_temporary_gemini_error(exc) and attempt < attempts:
+                    delay = (2 ** attempt) + (model_index * 0.5)
+                    time.sleep(delay)
+                    continue
+
+                # This model failed; move to the next fallback model.
+                break
 
     raise last_error
-
 
 def get_audio_duration(media_file):
     """Read exact media duration using ffprobe."""
