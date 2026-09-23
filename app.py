@@ -11,7 +11,6 @@ import json
 import re
 import shutil
 import base64
-import time
 import streamlit.components.v1 as components
 
 
@@ -61,103 +60,6 @@ st.write(
 # =========================================================
 # HELPER FUNCTIONS
 # =========================================================
-
-def is_quota_or_limit_error(exc):
-    text = str(exc).lower()
-    return any(x in text for x in [
-        "429", "quota", "resource_exhausted", "rate limit",
-        "daily limit", "per minute limit", "limit exceeded",
-        "credit"
-    ])
-
-
-def is_temporary_gemini_error(exc):
-    text = str(exc).lower()
-    return any(x in text for x in [
-        "503", "unavailable", "temporarily", "timeout",
-        "deadline exceeded", "service unavailable",
-        "internal server error", "500"
-    ])
-
-
-def is_model_unavailable_error(exc):
-    """Return True when trying another Gemini model may help."""
-    text = str(exc).lower()
-    return any(x in text for x in [
-        "503", "unavailable", "temporarily",
-        "service unavailable", "internal server error",
-        "500", "404", "not found", "model not found",
-        "unsupported model"
-    ])
-
-
-def generate_gemini_with_retry(
-    client,
-    contents,
-    model="gemini-3.6-flash",
-    attempts=2
-):
-    """
-    Generate Gemini content with automatic retry + model fallback.
-
-    429/quota/credit errors are never retried. Temporary 503/500/timeouts
-    are retried, then the next stable Flash model is tried automatically.
-    The requested model is always tried first.
-    """
-
-    fallback_models = [
-        "gemini-3.6-flash",
-        "gemini-3.7-flash",
-        "gemini-3.8-flash",
-        "gemini-3.5-flash"
-    ]
-
-    models_to_try = [model]
-    for fallback_model in fallback_models:
-        if fallback_model not in models_to_try:
-            models_to_try.append(fallback_model)
-
-    last_error = None
-
-    for model_index, current_model in enumerate(models_to_try):
-
-        for attempt in range(1, attempts + 1):
-
-            try:
-                response = client.models.generate_content(
-                    model=current_model,
-                    contents=contents
-                )
-
-                if model_index > 0:
-                    st.info(
-                        f"ℹ️ Gemini {model} is temporarily unavailable. "
-                        f"Automatically switched to {current_model}."
-                    )
-
-                return response
-
-            except Exception as exc:
-                last_error = exc
-
-                # Never retry or fallback on quota/credit errors.
-                if is_quota_or_limit_error(exc):
-                    raise
-
-                # Stop immediately for unrelated application/API errors.
-                if not is_model_unavailable_error(exc):
-                    raise
-
-                # Retry temporary availability errors before switching model.
-                if is_temporary_gemini_error(exc) and attempt < attempts:
-                    delay = (2 ** attempt) + (model_index * 0.5)
-                    time.sleep(delay)
-                    continue
-
-                # This model failed; move to the next fallback model.
-                break
-
-    raise last_error
 
 def get_audio_duration(media_file):
     """Read exact media duration using ffprobe."""
@@ -963,12 +865,6 @@ blur_enabled = st.checkbox(
     key="main_blur_enabled"
 )
 
-caption_enabled = st.checkbox(
-    "📱 Generate Social Media Caption",
-    value=False,
-    key="main_caption_enabled"
-)
-
 
 # =========================================================
 # INITIAL BLUR STATE
@@ -1069,7 +965,7 @@ if blur_enabled:
         )
 
         preview_extension = os.path.splitext(
-            st.session_state.get("uploaded_file_name", "uploaded_video.mp4")
+            uploaded_file.name
         )[1].lower()
 
         mime_map = {
@@ -1082,7 +978,7 @@ if blur_enabled:
 
         mime_type = mime_map.get(
             preview_extension,
-            st.session_state.get("uploaded_file_type", "video/mp4")
+            uploaded_file.type or "video/mp4"
         )
 
         # -------------------------------------------------
@@ -1554,7 +1450,7 @@ if "transcript_result" in st.session_state:
                         ).strip()
                     ]
 
-                    max_frames = 16
+                    max_frames = 24
 
                     if len(
                         usable_segments
@@ -1693,20 +1589,6 @@ Rules:
   keep it only in Dialogue and do not describe it as a visual event.
 - Keep the output short and natural.
 - The purpose is to make the later recap match the actual video.
-
-AFTER the scene analysis, also write an English movie recap narration.
-Return BOTH sections using these exact markers:
-
-SCENE_ANALYSIS_START
-[scene analysis in the exact format above]
-SCENE_ANALYSIS_END
-RECAP_SCRIPT_START
-[recap narration only]
-RECAP_SCRIPT_END
-
-The recap must use ONLY the scene analysis you just produced.
-Do not invent events, characters, locations, actions, or outcomes.
-Do not add headings or notes inside the recap section.
 """
 
                         contents = []
@@ -1746,25 +1628,17 @@ Do not add headings or notes inside the recap section.
                             )
 
                         response = (
-                            generate_gemini_with_retry(
-                                client, contents, "gemini-3.6-flash", attempts=2
+                            client.models.generate_content(
+                                model="gemini-3.6-flash",
+                                contents=contents
                             )
                         )
 
-                        raw_combined = (
+                        scene_analysis = (
                             response.text
                             if response
                             else ""
                         )
-
-                        scene_analysis = raw_combined
-                        recap_from_scene = ""
-
-                        if "SCENE_ANALYSIS_START" in raw_combined and "SCENE_ANALYSIS_END" in raw_combined:
-                            scene_analysis = raw_combined.split("SCENE_ANALYSIS_START", 1)[1].split("SCENE_ANALYSIS_END", 1)[0].strip()
-
-                        if "RECAP_SCRIPT_START" in raw_combined and "RECAP_SCRIPT_END" in raw_combined:
-                            recap_from_scene = raw_combined.split("RECAP_SCRIPT_START", 1)[1].split("RECAP_SCRIPT_END", 1)[0].strip()
 
                         if scene_analysis:
 
@@ -1777,9 +1651,6 @@ Do not add headings or notes inside the recap section.
                             ] = len(
                                 scene_items
                             )
-
-                            if recap_from_scene.strip():
-                                st.session_state["recap_script"] = recap_from_scene
 
                             st.success(
                                 "✅ Scene Analysis completed."
@@ -1823,11 +1694,9 @@ st.subheader(
 
 if "ai_scene_analysis" in st.session_state:
 
-    recap_button = st.button(
+    if st.button(
         "🎬 Generate Recap Script"
-    )
-
-    if recap_button or (run_all and "recap_script" not in st.session_state):
+    ) or run_all:
 
         try:
 
@@ -1845,41 +1714,66 @@ if "ai_scene_analysis" in st.session_state:
                 ]
             )
 
+            video_duration_for_recap = float(
+                st.session_state.get(
+                    "video_duration",
+                    0.0
+                )
+            )
+
             prompt = f"""
 You are a professional movie recap script writer.
 
-Write the recap using ONLY the Scene Analysis below.
+Write a SHORT recap narration using ONLY the Dialogue lines
+from the Scene Analysis below.
 
 IMPORTANT:
+The Visual lines are ONLY for scene understanding.
+They MUST NOT be turned into narration.
+The Dialogue lines are the ONLY source for the narration.
 
-The Scene Analysis was created by checking actual video frames.
+Target video duration: approximately {video_duration_for_recap:.1f} seconds.
+Keep the finished narration close to the original Dialogue duration.
+Do NOT expand the narration to describe every visual detail.
 
-Rules:
+STRICT RULES:
 
+- Use ONLY the information contained in Dialogue lines.
+- Ignore Visual lines when writing narration.
 - Follow the exact scene order.
+- Keep the same story meaning and sequence.
 - Do not reorder scenes.
 - Do not invent events.
 - Do not invent characters.
 - Do not invent locations.
 - Do not invent actions.
-- Do not add information from outside the video.
-- Do not add events that are not in Scene Analysis.
-- Do not repeat the same scene.
-- Do not write extra explanation.
-- Do not add headings.
-- Do not add notes.
-- Write only the recap narration.
-- Keep the narration natural for voiceover.
-- Make every sentence traceable to the actual scenes.
-- If a detail is not clearly shown, leave it out.
+- Do not add facts, explanations, atmosphere, colors, camera details,
+  environment descriptions, or visual details from the Visual lines.
+- Do not convert Visual descriptions into narration.
+- Do not repeat information.
+- Do not expand short Dialogue into long descriptive sentences.
+- Do not add an introduction or conclusion.
+- Do not add a moral, lesson, opinion, or explanation.
+- Do not add headings, bullet points, labels, or notes.
+- Write ONLY the final recap narration.
+- Keep it concise and natural for voiceover.
+- Preserve the original narration's approximate amount of spoken content.
+- If a Dialogue line is unclear, keep its meaning conservative rather
+  than inventing a replacement detail.
+
+The final narration should be much closer in length to the original
+Dialogue than to the Visual descriptions.
 
 Scene Analysis:
 
 {scene_analysis}
 """
 
-            response = generate_gemini_with_retry(
-                client, prompt, "gemini-3.6-flash", attempts=2
+            response = (
+                client.models.generate_content(
+                    model="gemini-3.6-flash",
+                    contents=prompt
+                )
             )
 
             recap_text = (
@@ -1954,19 +1848,35 @@ if "recap_script" in st.session_state:
                 ]
             )
 
+            video_duration_for_myanmar = float(
+                st.session_state.get(
+                    "video_duration",
+                    0.0
+                )
+            )
+
             prompt = f"""
-Translate the following movie recap narration
+Translate the following SHORT movie recap narration
 into natural spoken Myanmar Burmese.
 
-Rules:
+Target video duration: approximately {video_duration_for_myanmar:.1f} seconds.
+Keep the Myanmar narration close to the English narration in spoken length.
 
-- Preserve the exact meaning.
-- Do not add story events.
-- Do not remove story events.
-- Keep chronological order.
-- Do not add explanation.
+STRICT RULES:
+
+- Translate faithfully and naturally.
+- Preserve the exact meaning and chronological order.
+- Do NOT add any story event.
+- Do NOT remove any story event.
+- Do NOT add visual details, descriptions, explanations, atmosphere,
+  facts, opinions, or extra wording that is not necessary for translation.
+- Do NOT expand short sentences into longer descriptive sentences.
+- Do NOT summarize again.
+- Do NOT embellish the narration.
+- Keep approximately the same amount of spoken content as the English Recap.
+- Write ONLY the Myanmar narration.
 - Do not add English.
-- Write only the Myanmar narration.
+- Do not add headings, labels, notes, or explanations.
 - Make it natural for voiceover.
 - Use "ဒယ်" instead of "တယ်" at sentence endings
   where it sounds natural.
@@ -1976,8 +1886,11 @@ English Recap:
 {recap_script}
 """
 
-            response = generate_gemini_with_retry(
-                client, prompt, "gemini-3.6-flash", attempts=2
+            response = (
+                client.models.generate_content(
+                    model="gemini-3.6-flash",
+                    contents=prompt
+                )
             )
 
             myanmar_text = (
@@ -2036,13 +1949,11 @@ st.caption(
 )
 
 
-if caption_enabled and "ai_scene_analysis" in st.session_state:
+if "ai_scene_analysis" in st.session_state:
 
-    caption_button = st.button(
+    if st.button(
         "✨ Generate Post Caption"
-    )
-
-    if caption_button or run_all:
+    ) or run_all:
 
         try:
 
@@ -2139,8 +2050,11 @@ Myanmar Recap:
 {myanmar_for_caption}
 """
 
-            response = generate_gemini_with_retry(
-                client, caption_prompt, "gemini-3.6-flash", attempts=2
+            response = (
+                client.models.generate_content(
+                    model="gemini-3.6-flash",
+                    contents=caption_prompt
+                )
             )
 
             raw_caption = (
