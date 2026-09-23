@@ -2222,7 +2222,7 @@ if "myanmar_recap" in st.session_state:
                     / len(raw_files)
                 )
 
-            TTS_CROSSFADE = 0.06
+            TTS_CROSSFADE = 0.03
 
             normalized_files = []
 
