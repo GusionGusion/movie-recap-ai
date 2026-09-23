@@ -729,9 +729,21 @@ if uploaded_file is not None:
 
     video_bytes = uploaded_file.getvalue()
 
+    # Keep upload metadata in session_state.
+    # Streamlit may recreate the UploadedFile object on reruns, so
+    # the blur editor should not depend on uploaded_file.name/size/type.
     st.session_state[
         "uploaded_file"
     ] = video_bytes
+    st.session_state[
+        "uploaded_file_name"
+    ] = getattr(uploaded_file, "name", "uploaded_video.mp4")
+    st.session_state[
+        "uploaded_file_type"
+    ] = getattr(uploaded_file, "type", None) or "video/mp4"
+    st.session_state[
+        "uploaded_file_size"
+    ] = int(getattr(uploaded_file, "size", len(video_bytes)))
 
     file_size_mb = (
         uploaded_file.size
@@ -1013,12 +1025,15 @@ st.caption("Use the Blur Tool checkbox above to enable the interactive blur area
 # INITIAL BLUR STATE
 # =========================================================
 
-if uploaded_file is not None:
+if (
+    "uploaded_file" in st.session_state
+    and st.session_state.get("uploaded_file")
+):
 
     blur_source_key = (
-        uploaded_file.name
+        str(st.session_state.get("uploaded_file_name", "uploaded_video.mp4"))
         + "_"
-        + str(uploaded_file.size)
+        + str(st.session_state.get("uploaded_file_size", 0))
     )
 
     if (
@@ -1108,7 +1123,7 @@ if blur_enabled:
         )
 
         preview_extension = os.path.splitext(
-            uploaded_file.name
+            st.session_state.get("uploaded_file_name", "uploaded_video.mp4")
         )[1].lower()
 
         mime_map = {
@@ -1121,7 +1136,7 @@ if blur_enabled:
 
         mime_type = mime_map.get(
             preview_extension,
-            uploaded_file.type or "video/mp4"
+            st.session_state.get("uploaded_file_type", "video/mp4")
         )
 
         # -------------------------------------------------
