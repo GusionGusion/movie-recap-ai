@@ -1714,61 +1714,33 @@ if "ai_scene_analysis" in st.session_state:
                 ]
             )
 
-            video_duration_for_recap = float(
-                st.session_state.get(
-                    "video_duration",
-                    0
-                )
-            )
-
-            # Keep the English narration close to the original video/dialogue
-            # length instead of expanding the Visual descriptions from Scene Analysis.
-            target_min_words = max(
-                30,
-                int(round(video_duration_for_recap * 1.5))
-            ) if video_duration_for_recap > 0 else 45
-
-            target_max_words = max(
-                target_min_words + 10,
-                int(round(video_duration_for_recap * 2.0))
-            ) if video_duration_for_recap > 0 else 70
-
             prompt = f"""
 You are a professional movie recap script writer.
 
-Write a SHORT voiceover recap using ONLY the spoken Dialogue lines
-from the Scene Analysis below as the primary narration source.
+Write the recap using ONLY the Scene Analysis below.
 
 IMPORTANT:
-The Scene Analysis contains BOTH Visual descriptions and Dialogue.
-The Visual descriptions are for understanding what is on screen.
-They are NOT a script to narrate.
 
-STRICT NARRATION RULES:
+The Scene Analysis was created by checking actual video frames.
 
-- Use the Dialogue content as the narration source.
-- Do NOT turn Visual descriptions into extra narration.
-- Do NOT describe colors, camera angles, framing, lighting, scenery,
-  atmosphere, objects, textures, or other visual details unless they
-  are explicitly part of the Dialogue and necessary to preserve meaning.
-- Do NOT expand short Dialogue into longer descriptions.
-- Do NOT repeat information in different words.
-- Do NOT add explanations or educational facts.
-- Do NOT add adjectives just to make the narration more dramatic.
-- Do NOT invent events, characters, locations, actions, abilities,
-  causes, outcomes, or facts.
-- Follow the exact chronological scene order.
-- Keep the narration concise and natural for voiceover.
-- Every sentence must be traceable to the supplied Dialogue.
-- If a detail appears only in Visual and not in Dialogue, leave it out.
-- Write ONLY the recap narration. No heading, notes, labels, or explanation.
+Rules:
 
-VOICEOVER LENGTH:
-- Target approximately {target_min_words}–{target_max_words} English words.
-- Never intentionally exceed {target_max_words} words.
-- If the Dialogue is shorter than the target, keep it short rather than
-  filling the target with Visual details.
-- The recap should stay close to the original spoken-content duration.
+- Follow the exact scene order.
+- Do not reorder scenes.
+- Do not invent events.
+- Do not invent characters.
+- Do not invent locations.
+- Do not invent actions.
+- Do not add information from outside the video.
+- Do not add events that are not in Scene Analysis.
+- Do not repeat the same scene.
+- Do not write extra explanation.
+- Do not add headings.
+- Do not add notes.
+- Write only the recap narration.
+- Keep the narration natural for voiceover.
+- Make every sentence traceable to the actual scenes.
+- If a detail is not clearly shown, leave it out.
 
 Scene Analysis:
 
@@ -1854,36 +1826,29 @@ if "recap_script" in st.session_state:
                 ]
             )
 
-            video_duration_for_myanmar = float(
-                st.session_state.get(
-                    "video_duration",
-                    0
-                )
-            )
-
             prompt = f"""
-Translate the following SHORT movie recap narration
-into natural spoken Myanmar Burmese for voiceover.
+Translate the following movie recap narration into natural, conversational spoken Myanmar Burmese for a documentary/movie-recap voiceover.
 
-STRICT RULES:
+Rules:
 
 - Preserve the exact meaning of the English recap.
-- Translate faithfully; do NOT rewrite or expand it.
-- Do NOT add any new story events, visual details, explanations,
-  descriptions, facts, emotions, atmosphere, or conclusions.
-- Do NOT turn one short sentence into several longer sentences.
-- Do NOT repeat information.
-- Do NOT add information from the Scene Analysis or from outside.
+- Do not add story events, facts, explanations, opinions, or visual details.
+- Do not remove any important meaning or event.
 - Keep the exact chronological order.
-- Keep approximately the same amount of spoken content as the English recap.
-- The Myanmar narration must be concise enough to stay close to the
-  original video duration ({video_duration_for_myanmar:.1f} seconds).
-- If the English recap is short, the Myanmar translation must also be short.
-- Do NOT add filler words just to make the narration sound longer.
-- Do NOT add English.
-- Write ONLY the Myanmar narration.
-- Make it natural for voiceover.
-- Use "ဒယ်" instead of "တယ်" at sentence endings where it sounds natural.
+- Translate the meaning naturally; do NOT translate word-for-word if that makes the Myanmar sentence sound unnatural.
+- Write like a real Myanmar narrator is speaking, not like a literal machine translation.
+- Use simple, familiar Myanmar words that are easy to understand when heard.
+- Keep sentences reasonably short and smooth for Text-to-Speech.
+- Do not make the Myanmar version unnecessarily longer than the English version.
+- Do not repeat information.
+- Do not add filler words just to make sentences longer.
+- Do not add headings, labels, notes, or explanations.
+- Do not add English words unless an English term is absolutely necessary for the meaning.
+- Write ONLY the final Myanmar narration.
+- Use normal Myanmar sentence endings such as "တယ်", "ပါတယ်", "နေတယ်", "နိုင်တယ်" where appropriate.
+- IMPORTANT: Never replace "တယ်" with "ဒယ်". Always keep "တယ်" as "တယ်".
+- Avoid awkward literal phrases such as "ဗိသုကာ ပါရမီရှင်", "ဖောက်ထွင်းဆောက်လုပ်", "လုပ်ဆောင်ပေးတယ်" when a simpler natural Myanmar expression can convey the same meaning.
+- The final result must sound natural when spoken aloud, with a smooth documentary narration flow.
 
 English Recap:
 
