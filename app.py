@@ -11,6 +11,7 @@ import json
 import re
 import shutil
 import base64
+import time
 import streamlit.components.v1 as components
 
 
@@ -92,16 +93,64 @@ def record_gemini_usage(response, model_name):
         data["total_tokens"] += int(getattr(usage, "total_token_count", 0) or 0)
 
 
-def generate_gemini_tracked(client, contents, model="gemini-3.6-flash"):
-    """Single Gemini request wrapper that records usage without extra API calls."""
+def generate_gemini_tracked(
+    client,
+    contents,
+    model="gemini-3.6-flash",
+    max_retries=4
+):
+    """
+    Gemini request wrapper with limited 503 retry/backoff.
 
-    response = client.models.generate_content(
-        model=model,
-        contents=contents
-    )
+    503 is usually a temporary service/model availability problem,
+    so retry only 503 errors. Other errors are raised immediately.
+    A maximum of 5 total attempts is allowed (initial request + 4 retries).
+    """
 
-    record_gemini_usage(response, model)
-    return response
+    last_error = None
+
+    for attempt in range(max_retries + 1):
+
+        try:
+
+            response = client.models.generate_content(
+                model=model,
+                contents=contents
+            )
+
+            record_gemini_usage(
+                response,
+                model
+            )
+
+            return response
+
+        except Exception as e:
+
+            last_error = e
+
+            error_text = str(e).lower()
+
+            is_503 = (
+                "503" in error_text
+                or "unavailable" in error_text
+                or "service unavailable" in error_text
+            )
+
+            if not is_503 or attempt >= max_retries:
+                raise
+
+            wait_seconds = 2 ** (attempt + 1)
+
+            st.warning(
+                f"⚠️ Gemini service temporarily unavailable (503). "
+                f"Retry {attempt + 1}/{max_retries} in "
+                f"{wait_seconds}s..."
+            )
+
+            time.sleep(wait_seconds)
+
+    raise last_error
 
 
 def show_gemini_usage_sidebar():
