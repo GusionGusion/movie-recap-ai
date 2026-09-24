@@ -53,13 +53,128 @@ st.set_page_config(
 
 st.title("🎬 Movie Recap AI")
 st.write(
-    "Upload a movie or video and generate a recap."
+    "Upload a movie and analyze video information."
 )
 
 
 # =========================================================
 # HELPER FUNCTIONS
 # =========================================================
+
+# =========================================================
+# GEMINI USAGE MONITOR
+# =========================================================
+
+if "gemini_usage" not in st.session_state:
+    st.session_state["gemini_usage"] = {
+        "calls": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "thoughts_tokens": 0,
+        "total_tokens": 0,
+        "last_model": "-",
+    }
+
+
+def record_gemini_usage(response, model_name):
+    """Record token usage returned by Gemini for this Streamlit session."""
+
+    usage = getattr(response, "usage_metadata", None)
+
+    data = st.session_state["gemini_usage"]
+    data["calls"] += 1
+    data["last_model"] = model_name
+
+    if usage is not None:
+        data["input_tokens"] += int(getattr(usage, "prompt_token_count", 0) or 0)
+        data["output_tokens"] += int(getattr(usage, "candidates_token_count", 0) or 0)
+        data["thoughts_tokens"] += int(getattr(usage, "thoughts_token_count", 0) or 0)
+        data["total_tokens"] += int(getattr(usage, "total_token_count", 0) or 0)
+
+
+def generate_gemini_tracked(client, contents, model="gemini-3.6-flash"):
+    """Single Gemini request wrapper that records usage without extra API calls."""
+
+    response = client.models.generate_content(
+        model=model,
+        contents=contents
+    )
+
+    record_gemini_usage(response, model)
+    return response
+
+
+def show_gemini_usage_sidebar():
+    """Show session usage. Exact remaining Google quota/credit is not exposed by the API key."""
+
+    data = st.session_state["gemini_usage"]
+
+    with st.sidebar:
+        st.markdown("### 🧠 Gemini Usage")
+        st.metric("API Calls (this session)", data["calls"])
+        st.caption(f"Last model: {data['last_model']}")
+        st.write(f"📥 Input tokens: **{data["input_tokens"]:,}**")
+        st.write(f"📤 Output tokens: **{data["output_tokens"]:,}**")
+        st.write(f"🧠 Thinking tokens: **{data["thoughts_tokens"]:,}**")
+        st.write(f"🔢 Total tokens: **{data['total_tokens']:,}**")
+
+        # Gemini 3.6 Flash Standard pricing currently published by Google:
+        # $0.75 / 1M input tokens and $3.75 / 1M output tokens through
+        # December 31, 2026. This is only an ESTIMATE; Google billing
+        # balance itself is not exposed by the Gemini API response.
+        estimated_cost = (
+            (data["input_tokens"] / 1_000_000) * 0.75
+            + (data["output_tokens"] / 1_000_000) * 3.75
+        )
+
+        st.write(f"💵 Estimated API cost: **${estimated_cost:.4f}**")
+
+        starting_credit = st.number_input(
+            "💳 Starting Credit (USD)",
+            min_value=0.0,
+            value=5.0,
+            step=1.0,
+            key="gemini_starting_credit"
+        )
+
+        estimated_remaining = max(
+            0.0,
+            float(starting_credit) - estimated_cost
+        )
+
+        st.metric(
+            "💰 Estimated Credit Remaining",
+            f"${estimated_remaining:.4f}"
+        )
+
+        st.caption(
+            "⚠️ This is an estimated balance from token usage, not Google's "
+            "actual billing balance. Free-tier quota remaining is not exposed "
+            "directly through the Gemini API response."
+        )
+
+        st.markdown(
+            "[📊 Open Google AI Studio Usage](https://aistudio.google.com/)"
+        )
+
+        if st.button("🔄 Reset Usage Counter", use_container_width=True):
+            st.session_state["gemini_usage"] = {
+                "calls": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "thoughts_tokens": 0,
+                "total_tokens": 0,
+                "last_model": "-",
+            }
+            st.rerun()
+
+        st.markdown(
+            "[📊 Open Google AI Studio Usage](https://aistudio.google.com/)"
+        )
+
+
+show_gemini_usage_sidebar()
+
 
 def get_audio_duration(media_file):
     """Read exact media duration using ffprobe."""
@@ -281,7 +396,7 @@ def wrap_myanmar(
     text,
     max_chars=24
 ):
-    """Wrap subtitle into a maximum of 2 ASS lines."""
+    """Wrap subtitle into a maximum of 2 ASS lines without dropping text."""
 
     text = re.sub(
         r"\s+",
@@ -348,8 +463,18 @@ def wrap_myanmar(
 # =========================================================
 
 def clean_post_caption(text):
+    """
+    Clean Gemini generated social-media caption.
+
+    Maximum 3 non-empty lines.
+    Removes accidental labels such as:
+    Caption:
+    Post Caption:
+    Title:
+    """
 
     if not text:
+
         return ""
 
     text = str(text).replace(
@@ -360,6 +485,7 @@ def clean_post_caption(text):
         "\n"
     ).strip()
 
+    # Remove markdown code fences
     text = re.sub(
         r"^```(?:text|caption|markdown)?\s*",
         "",
@@ -373,6 +499,7 @@ def clean_post_caption(text):
         text
     )
 
+    # Remove common accidental labels
     text = re.sub(
         r"^\s*(?:caption|post\s*caption|title)\s*[:：-]\s*",
         "",
@@ -380,6 +507,7 @@ def clean_post_caption(text):
         flags=re.IGNORECASE
     )
 
+    # Remove surrounding quotation marks
     text = text.strip()
 
     if (
@@ -390,6 +518,7 @@ def clean_post_caption(text):
 
         text = text[1:-1].strip()
 
+    # Keep only non-empty lines
     lines = []
 
     for line in text.split("\n"):
@@ -403,6 +532,7 @@ def clean_post_caption(text):
         if not line:
             continue
 
+        # Remove accidental numbered-list prefix
         line = re.sub(
             r"^\s*\d+[\.\)]\s*",
             "",
@@ -418,6 +548,7 @@ def clean_post_caption(text):
         if line:
             lines.append(line)
 
+    # Maximum 3 lines
     lines = lines[:3]
 
     return "\n".join(lines).strip()
@@ -435,6 +566,13 @@ def make_video_data_url(
     video_bytes,
     mime_type
 ):
+    """
+    Convert uploaded video to a browser data URL.
+
+    Cached so Streamlit does not repeatedly perform
+    Base64 encoding when the page reruns because the
+    user moves/resizes the blur box.
+    """
 
     encoded = base64.b64encode(
         video_bytes
@@ -456,6 +594,9 @@ def extract_frame_bytes(
     cap,
     timestamp
 ):
+    """
+    Extract one actual frame from video.
+    """
 
     try:
 
@@ -541,50 +682,6 @@ def load_whisper_model(
         compute_type="int8",
         cpu_threads=4,
         num_workers=1
-    )
-
-
-# =========================================================
-# RECAP MODE
-# =========================================================
-
-st.subheader(
-    "🎬 Recap Mode"
-)
-
-recap_mode = st.selectbox(
-    "Choose Content Type",
-    [
-        "🎬 Movie Recap",
-        "🐾 Animal Documentary"
-    ],
-    index=0,
-    key="main_recap_mode"
-)
-
-is_animal_mode = (
-    recap_mode == "🐾 Animal Documentary"
-)
-
-if is_animal_mode:
-
-    mode_name = "Animal Documentary"
-
-    st.info(
-        "🐾 Animal Documentary Mode selected. "
-        "The AI will focus on actual visible animal "
-        "behavior, abilities, survival skills, strengths, "
-        "weaknesses and surprising facts."
-    )
-
-else:
-
-    mode_name = "Movie Recap"
-
-    st.info(
-        "🎬 Movie Recap Mode selected. "
-        "The AI will focus on the actual movie scenes "
-        "and chronological story narration."
     )
 
 
@@ -972,6 +1069,10 @@ if blur_enabled:
 
     else:
 
+        # -------------------------------------------------
+        # ACTUAL UPLOADED VIDEO
+        # -------------------------------------------------
+
         video_bytes_for_preview = (
             st.session_state[
                 "uploaded_file"
@@ -995,10 +1096,18 @@ if blur_enabled:
             uploaded_file.type or "video/mp4"
         )
 
+        # -------------------------------------------------
+        # Cached data URL
+        # -------------------------------------------------
+
         video_data_url = make_video_data_url(
             video_bytes_for_preview,
             mime_type
         )
+
+        # -------------------------------------------------
+        # CURRENT BLUR VALUES
+        # -------------------------------------------------
 
         current_blur_x = float(
             st.session_state.get(
@@ -1028,6 +1137,10 @@ if blur_enabled:
             )
         )
 
+        # -------------------------------------------------
+        # INTERACTIVE VIDEO EDITOR
+        # -------------------------------------------------
+
         blur_result = BLUR_VIDEO_EDITOR(
             video_src=video_data_url,
 
@@ -1039,6 +1152,10 @@ if blur_enabled:
 
             key="blur_video_editor"
         )
+
+        # -------------------------------------------------
+        # RECEIVE BOX POSITION
+        # -------------------------------------------------
 
         if isinstance(
             blur_result,
@@ -1074,6 +1191,10 @@ if blur_enabled:
                         current_blur_height
                     )
                 )
+
+                # -------------------------------------------------
+                # SAFETY CLAMP
+                # -------------------------------------------------
 
                 new_width = max(
                     1.0,
@@ -1127,6 +1248,11 @@ if blur_enabled:
 
                 pass
 
+
+    # ---------------------------------------------------------
+    # BLUR STRENGTH
+    # ---------------------------------------------------------
+
     blur_strength = st.slider(
         "💪 Blur Strength",
         min_value=1,
@@ -1135,6 +1261,11 @@ if blur_enabled:
         step=1,
         key="main_blur_strength"
     )
+
+
+    # ---------------------------------------------------------
+    # USE INTERACTIVE VALUES
+    # ---------------------------------------------------------
 
     blur_x = float(
         st.session_state.get(
@@ -1163,6 +1294,7 @@ if blur_enabled:
             18.0
         )
     )
+
 
     st.success(
         "✅ Blur Box position saved."
@@ -1211,20 +1343,8 @@ if uploaded_file is not None:
         "### 🎬 Ready to Generate"
     )
 
-    if is_animal_mode:
-
-        button_text = (
-            "🐾 ONE CLICK — GENERATE ANIMAL DOCUMENTARY"
-        )
-
-    else:
-
-        button_text = (
-            "🎬 ONE CLICK — GENERATE MOVIE RECAP"
-        )
-
     run_all = st.button(
-        button_text,
+        "🎬 ONE CLICK — GENERATE MOVIE RECAP",
         type="primary",
         use_container_width=True
     )
@@ -1232,26 +1352,18 @@ if uploaded_file is not None:
     if run_all:
 
         st.success(
-            f"🚀 One Click {mode_name} started!"
+            "🚀 One Click Recap started!"
         )
 
 st.divider()
 
 
 # =========================================================
-# TRANSCRIPT
+# MOVIE TRANSCRIPT
 # =========================================================
 
-if is_animal_mode:
-
-    transcript_heading = "🎤 Animal Video Transcript"
-
-else:
-
-    transcript_heading = "🎤 Movie Transcript"
-
 st.subheader(
-    transcript_heading
+    "🎤 Movie Transcript"
 )
 
 
@@ -1384,16 +1496,8 @@ st.divider()
 # SCENE ANALYSIS
 # =========================================================
 
-if is_animal_mode:
-
-    scene_heading = "🐾 Animal Scene Analysis"
-
-else:
-
-    scene_heading = "🎬 Scene Analysis"
-
 st.subheader(
-    scene_heading
+    "🎬 Scene Analysis"
 )
 
 
@@ -1560,101 +1664,13 @@ if "transcript_result" in st.session_state:
 
                     else:
 
-                        # =================================================
-                        # MODE-SPECIFIC SCENE PROMPT
-                        # =================================================
-
-                        if is_animal_mode:
-
-                            prompt = """
-You are analyzing an actual animal / wildlife documentary video.
-
-For every supplied timestamp:
-
-LOOK AT THE ACTUAL VIDEO FRAME FIRST.
-
-Then use the transcript only to understand the spoken words.
-
-The selected content type is:
-
-ANIMAL DOCUMENTARY
-
-Your job is to identify and describe only what is actually supported
-by the supplied video frame and transcript.
-
-For every scene use exactly this format:
-
-Scene 1 — 00:00.0 → 00:00.0
-Visual: ...
-Dialogue: ...
-
-Scene 2 — 00:00.0 → 00:00.0
-Visual: ...
-Dialogue: ...
-
-Rules:
-
-- Describe ONLY what is actually visible in the supplied frame.
-- Do NOT invent animals.
-- Do NOT invent species.
-- Do NOT invent behavior.
-- Do NOT invent actions.
-- Do NOT invent locations.
-- Do NOT invent abilities.
-- Do NOT invent survival skills.
-- Do NOT invent strengths or weaknesses.
-- Do NOT invent facts that are not supported by the video.
-- Do NOT use outside knowledge to create a visual event.
-- Keep the exact chronological order.
-- Keep each scene attached to its supplied timestamp.
-- Do not move dialogue between timestamps.
-- If an animal behavior is visible, describe the visible behavior clearly.
-- If an ability or survival behavior is clearly demonstrated,
-  describe only what is actually shown.
-- If a behavior, ability, strength, weakness, or fact is not clearly
-  supported by the supplied material, do not guess it.
-- The transcript may explain something that cannot be visually confirmed.
-  In that case keep it only in Dialogue and do not turn it into a
-  Visual event.
-- Do not identify a species unless the supplied visual or transcript
-  clearly supports the identification.
-- Do not write a long explanation.
-- Do not add "Summary", "Characters", "Emotion", "Analysis",
-  "Animal Facts" or other extra sections.
-- Keep the output concise and natural.
-- The purpose is to make the later documentary narration match the
-  actual video.
-
-Focus on observable:
-- animal behavior
-- movement
-- interaction
-- feeding
-- hunting
-- defense
-- escape
-- environmental interaction
-- survival behavior
-- visible physical abilities
-- visible strengths or limitations
-- surprising observable moments
-
-Do not turn assumptions into facts.
-"""
-
-                        else:
-
-                            prompt = """
+                        prompt = """
 You are analyzing an actual movie/video.
 
 For every supplied timestamp:
 LOOK AT THE ACTUAL VIDEO FRAME FIRST.
 
 Then use the transcript only to understand the spoken words.
-
-The selected content type is:
-
-MOVIE RECAP
 
 Return ONLY a concise scene analysis.
 
@@ -1727,9 +1743,10 @@ Rules:
                             )
 
                         response = (
-                            client.models.generate_content(
-                                model="gemini-3.6-flash",
-                                contents=contents
+                            generate_gemini_tracked(
+                                client,
+                                contents,
+                                "gemini-3.6-flash"
                             )
                         )
 
@@ -1752,7 +1769,7 @@ Rules:
                             )
 
                             st.success(
-                                f"✅ {mode_name} Scene Analysis completed."
+                                "✅ Scene Analysis completed."
                             )
 
                         else:
@@ -1783,26 +1800,18 @@ st.divider()
 
 
 # =========================================================
-# RECAP / DOCUMENTARY SCRIPT
+# MOVIE RECAP SCRIPT
 # =========================================================
 
-if is_animal_mode:
-
-    script_heading = "🐾 Animal Documentary Script"
-
-else:
-
-    script_heading = "📝 Movie Recap Script"
-
 st.subheader(
-    script_heading
+    "📝 Movie Recap Script"
 )
 
 
 if "ai_scene_analysis" in st.session_state:
 
     if st.button(
-        "📝 Generate Script"
+        "🎬 Generate Recap Script"
     ) or run_all:
 
         try:
@@ -1821,80 +1830,7 @@ if "ai_scene_analysis" in st.session_state:
                 ]
             )
 
-            # =================================================
-            # ANIMAL DOCUMENTARY SCRIPT
-            # =================================================
-
-            if is_animal_mode:
-
-                prompt = f"""
-You are a professional animal and wildlife documentary
-script writer.
-
-Write a natural documentary narration using ONLY the
-Animal Scene Analysis below.
-
-The Scene Analysis was created by checking actual video frames.
-
-IMPORTANT:
-
-The narration must describe the actual animal/video content.
-
-Rules:
-
-- Follow the exact scene order.
-- Do not reorder scenes.
-- Do not invent animals.
-- Do not invent species.
-- Do not invent events.
-- Do not invent actions.
-- Do not invent locations.
-- Do not invent behavior that is not shown.
-- Do not invent abilities.
-- Do not invent survival skills.
-- Do not invent strengths or weaknesses.
-- Do not add scientific facts from outside the supplied material.
-- Do not add information that cannot be traced to the actual video
-  or the supplied Scene Analysis.
-- If a behavior is clearly visible, explain it naturally.
-- If an ability is clearly demonstrated, explain what is actually shown.
-- If something is uncertain, leave it out.
-- Do not exaggerate.
-- Do not make unsupported claims.
-- Do not write extra explanation.
-- Do not add headings.
-- Do not add notes.
-- Write ONLY the documentary narration.
-- Make it engaging, educational and natural for voiceover.
-- Keep the narration connected to the actual chronological scenes.
-- Surprising facts may be mentioned only when supported by the
-  supplied material.
-- Focus where appropriate on:
-  animal behavior,
-  movement,
-  interaction,
-  feeding,
-  hunting,
-  defense,
-  escape,
-  survival behavior,
-  visible abilities,
-  visible strengths,
-  visible limitations,
-  and surprising observable moments.
-
-Animal Scene Analysis:
-
-{scene_analysis}
-"""
-
-            # =================================================
-            # MOVIE RECAP SCRIPT
-            # =================================================
-
-            else:
-
-                prompt = f"""
+            prompt = f"""
 You are a professional movie recap script writer.
 
 Write the recap using ONLY the Scene Analysis below.
@@ -1928,9 +1864,10 @@ Scene Analysis:
 """
 
             response = (
-                client.models.generate_content(
-                    model="gemini-3.6-flash",
-                    contents=prompt
+                generate_gemini_tracked(
+                    client,
+                    prompt,
+                    "gemini-3.6-flash"
                 )
             )
 
@@ -1943,36 +1880,28 @@ Scene Analysis:
             if not recap_text.strip():
 
                 raise RuntimeError(
-                    "Gemini returned an empty script."
+                    "Gemini returned an empty recap script."
                 )
 
             st.session_state[
                 "recap_script"
             ] = recap_text
 
-            if is_animal_mode:
-
-                st.success(
-                    "✅ Animal Documentary Script generated!"
-                )
-
-            else:
-
-                st.success(
-                    "✅ Movie Recap Script generated!"
-                )
+            st.success(
+                "✅ Movie Recap Script generated!"
+            )
 
         except Exception as e:
 
             st.error(
-                f"❌ Script generation failed: {e}"
+                f"❌ Recap generation failed: {e}"
             )
 
 
 if "recap_script" in st.session_state:
 
     st.text_area(
-        "📝 Script",
+        "🎬 Recap Script",
         st.session_state[
             "recap_script"
         ],
@@ -1984,19 +1913,11 @@ st.divider()
 
 
 # =========================================================
-# MYANMAR RECAP / DOCUMENTARY SCRIPT
+# MYANMAR RECAP SCRIPT
 # =========================================================
 
-if is_animal_mode:
-
-    myanmar_heading = "🇲🇲 Myanmar Documentary Script"
-
-else:
-
-    myanmar_heading = "🇲🇲 Myanmar Recap Script"
-
 st.subheader(
-    myanmar_heading
+    "🇲🇲 Myanmar Recap Script"
 )
 
 
@@ -2022,37 +1943,7 @@ if "recap_script" in st.session_state:
                 ]
             )
 
-            if is_animal_mode:
-
-                prompt = f"""
-Translate the following animal / wildlife documentary
-narration into natural spoken Myanmar Burmese.
-
-Rules:
-
-- Preserve the exact meaning.
-- Do not add animal facts.
-- Do not add story events.
-- Do not add scientific information.
-- Do not remove important information.
-- Keep chronological order.
-- Keep animal behavior and actions accurate.
-- Do not exaggerate.
-- Do not add explanation.
-- Do not add English.
-- Write only the Myanmar narration.
-- Make it natural for documentary voiceover.
-- Use "ဒယ်" instead of "တယ်" at sentence endings
-  where it sounds natural.
-
-English Documentary Script:
-
-{recap_script}
-"""
-
-            else:
-
-                prompt = f"""
+            prompt = f"""
 Translate the following movie recap narration
 into natural spoken Myanmar Burmese.
 
@@ -2075,9 +1966,10 @@ English Recap:
 """
 
             response = (
-                client.models.generate_content(
-                    model="gemini-3.6-flash",
-                    contents=prompt
+                generate_gemini_tracked(
+                    client,
+                    prompt,
+                    "gemini-3.6-flash"
                 )
             )
 
@@ -2090,24 +1982,16 @@ English Recap:
             if not myanmar_text.strip():
 
                 raise RuntimeError(
-                    "Gemini returned an empty Myanmar script."
+                    "Gemini returned an empty Myanmar recap."
                 )
 
             st.session_state[
                 "myanmar_recap"
             ] = myanmar_text
 
-            if is_animal_mode:
-
-                st.success(
-                    "✅ Myanmar Documentary Script generated!"
-                )
-
-            else:
-
-                st.success(
-                    "✅ Myanmar Recap Script generated!"
-                )
+            st.success(
+                "✅ Myanmar Recap Script generated!"
+            )
 
         except Exception as e:
 
@@ -2119,7 +2003,7 @@ English Recap:
 if "myanmar_recap" in st.session_state:
 
     st.text_area(
-        "🇲🇲 Myanmar Script",
+        "🇲🇲 Myanmar Recap",
         st.session_state[
             "myanmar_recap"
         ],
@@ -2138,26 +2022,18 @@ st.subheader(
     "📱 Post Caption"
 )
 
-if is_animal_mode:
-
-    st.caption(
-        "🐾 Animal Documentary အတွက် Social Media Caption "
-        "ရေးပေးပါမယ်။ ဒီ Caption ကို Video ထဲမှာ ထည့်မှာမဟုတ်ပါ။"
-    )
-
-else:
-
-    st.caption(
-        "🎬 Movie Recap အတွက် Social Media Caption "
-        "ရေးပေးပါမယ်။ ဒီ Caption ကို Video ထဲမှာ ထည့်မှာမဟုတ်ပါ။"
-    )
+st.caption(
+    "🎬 Movie Recap ဖြစ်ဖြစ် 🐾 Animal Documentary ဖြစ်ဖြစ် "
+    "Video Content ကိုအခြေခံပြီး Post တင်ရန် Caption ရေးပေးပါမယ်။ "
+    "ဒီ Caption ကို Video ထဲမှာ ထည့်မှာမဟုတ်ပါ။"
+)
 
 
 if "ai_scene_analysis" in st.session_state:
 
     if st.button(
         "✨ Generate Post Caption"
-    ) or run_all:
+    ):
 
         try:
 
@@ -2190,28 +2066,27 @@ if "ai_scene_analysis" in st.session_state:
                 )
             )
 
-            # =================================================
-            # MODE-SPECIFIC CAPTION PROMPT
-            # =================================================
-
-            if is_animal_mode:
-
-                caption_prompt = f"""
+            caption_prompt = f"""
 You are a professional social-media post caption writer.
 
-The selected content type is:
-
-ANIMAL / WILDLIFE DOCUMENTARY
-
 Create ONE compelling Myanmar-language caption
-for the uploaded animal documentary video.
+for the uploaded video.
 
-The caption will be used ONLY as a SOCIAL MEDIA POST
-TITLE/CAPTION.
+The video can be either:
+
+1. A movie recap
+OR
+2. An animal / wildlife documentary.
+
+Automatically understand the content type from the
+provided scene analysis and narration.
+
+IMPORTANT:
+The caption will be used ONLY as a SOCIAL MEDIA POST TITLE/CAPTION.
 
 It must NOT be:
 - a video subtitle
-- on-screen video text
+- an on-screen video text
 - a voiceover
 - part of the final video
 
@@ -2221,75 +2096,19 @@ CAPTION REQUIREMENTS:
 - Maximum 3 lines.
 - Write in natural Myanmar Burmese.
 - Make it interesting and attention-grabbing.
-- Match the actual animal video content.
+- Match the actual video content.
 - Create curiosity without misleading the audience.
-- Focus on an actually supported animal behavior,
-  ability, survival skill, interaction, strength,
-  weakness, or surprising observable moment.
-- Do NOT invent facts.
-- Do NOT invent animal species.
-- Do NOT invent abilities.
-- Do NOT invent behavior.
-- Do NOT invent locations.
-- Do NOT claim scientific information that is not
-  supported by the provided content.
-- Do NOT exaggerate.
-- Do NOT use unsupported superlatives.
-- You may use 1–2 suitable emojis.
-- Do NOT use hashtags.
-- Do NOT add a heading.
-- Do NOT write "Caption:".
-- Do NOT write an explanation.
-- Return ONLY the final caption.
-- Do not use quotation marks around the caption.
-
-Animal Scene Analysis:
-{scene_analysis_for_caption}
-
-Documentary Script:
-{recap_for_caption}
-
-Myanmar Documentary Script:
-{myanmar_for_caption}
-"""
-
-            else:
-
-                caption_prompt = f"""
-You are a professional social-media post caption writer.
-
-The selected content type is:
-
-MOVIE RECAP
-
-Create ONE compelling Myanmar-language caption
-for the uploaded movie recap video.
-
-The caption will be used ONLY as a SOCIAL MEDIA POST
-TITLE/CAPTION.
-
-It must NOT be:
-- a video subtitle
-- on-screen video text
-- a voiceover
-- part of the final video
-
-CAPTION REQUIREMENTS:
-
-- Minimum 1 line.
-- Maximum 3 lines.
-- Write in natural Myanmar Burmese.
-- Make it interesting and attention-grabbing.
-- Match the actual movie content.
-- Create curiosity without misleading the audience.
-- Do NOT invent facts, events, characters, locations,
-  actions, or outcomes.
-- Do NOT claim something that is not supported by
-  the provided content.
-- Do NOT reveal a major movie ending or twist if
-  this is a movie recap.
-- Focus on suspense, mystery, emotional stakes,
-  or an intriguing situation.
+- Do NOT invent facts, events, characters, animals,
+  locations, abilities, or outcomes.
+- Do NOT claim something that is not supported by the
+  provided content.
+- Do NOT reveal a major movie ending or twist if this
+  is a movie recap.
+- For movie recaps, focus on suspense, mystery,
+  emotional stakes, or an intriguing situation.
+- For animal documentaries, focus on a surprising
+  behavior, ability, survival skill, or interesting
+  fact that is actually supported by the content.
 - Keep it concise.
 - Make it suitable for Facebook, TikTok, YouTube Shorts,
   Instagram Reels, or similar social-media posts.
@@ -2301,20 +2120,21 @@ CAPTION REQUIREMENTS:
 - Return ONLY the final caption.
 - Do not use quotation marks around the caption.
 
-Movie Scene Analysis:
+Scene Analysis:
 {scene_analysis_for_caption}
 
-Movie Recap Script:
+English Recap:
 {recap_for_caption}
 
-Myanmar Recap Script:
+Myanmar Recap:
 {myanmar_for_caption}
 """
 
             response = (
-                client.models.generate_content(
-                    model="gemini-3.6-flash",
-                    contents=caption_prompt
+                generate_gemini_tracked(
+                    client,
+                    caption_prompt,
+                    "gemini-3.6-flash"
                 )
             )
 
@@ -2339,7 +2159,7 @@ Myanmar Recap Script:
             ] = post_caption
 
             st.success(
-                f"✅ {mode_name} Post Caption generated!"
+                "✅ Post Caption generated!"
             )
 
         except Exception as e:
@@ -2380,16 +2200,8 @@ st.divider()
 # MYANMAR VOICEOVER
 # =========================================================
 
-if is_animal_mode:
-
-    voice_heading = "🐾 Myanmar Documentary Voiceover"
-
-else:
-
-    voice_heading = "🎙️ Myanmar Voiceover"
-
 st.subheader(
-    voice_heading
+    "🎙️ Myanmar Voiceover"
 )
 
 
@@ -2442,7 +2254,7 @@ if "myanmar_recap" in st.session_state:
             if not text:
 
                 st.error(
-                    "❌ Myanmar script is empty."
+                    "❌ Myanmar recap is empty."
                 )
 
                 st.stop()
@@ -3148,16 +2960,8 @@ st.divider()
 # FINAL VIDEO EXPORT
 # =========================================================
 
-if is_animal_mode:
-
-    export_heading = "🐾 Final Animal Documentary Export"
-
-else:
-
-    export_heading = "🎬 Final Movie Recap Export"
-
 st.subheader(
-    export_heading
+    "🎬 Final Video Export"
 )
 
 
@@ -3170,7 +2974,7 @@ if (
 ):
 
     if st.button(
-        "🎬 Create Final Video"
+        "🎬 Create Final Recap Video"
     ) or run_all:
 
         try:
@@ -3571,6 +3375,10 @@ if (
 
             labels = []
 
+            # -------------------------------------------------
+            # BLUR HELPER
+            # -------------------------------------------------
+
             def make_blur_filter(
                 input_label,
                 output_label
@@ -3638,9 +3446,9 @@ if (
                     + output_label
                 )
 
-            # =================================================
+            # -------------------------------------------------
             # BUILD NORMAL + FREEZE SEGMENTS
-            # =================================================
+            # -------------------------------------------------
 
             if freeze_enabled:
 
@@ -3672,6 +3480,10 @@ if (
                         f"[normal_scaled{i}]"
                     )
 
+                    # -----------------------------------------
+                    # NORMAL SEGMENT
+                    # -----------------------------------------
+
                     filter_parts.append(
                         f"[0:v]"
                         f"trim="
@@ -3693,6 +3505,10 @@ if (
                     labels.append(
                         normal_label
                     )
+
+                    # -----------------------------------------
+                    # FREEZE + ZOOM
+                    # -----------------------------------------
 
                     if end < video_duration:
 
@@ -3751,6 +3567,10 @@ if (
                                 f")"
                             )
 
+                        # -----------------------------------------
+                        # ONE ACTUAL FRAME
+                        # -----------------------------------------
+
                         filter_parts.append(
                             f"[0:v]"
                             f"trim="
@@ -3764,6 +3584,10 @@ if (
                             f"setsar=1"
                             f"{freeze_source_label}"
                         )
+
+                        # -----------------------------------------
+                        # BLUR BEFORE ZOOM
+                        # -----------------------------------------
 
                         freeze_blur_label = (
                             f"[freeze_blur{i}]"
@@ -3810,6 +3634,10 @@ if (
                                 freeze_source_label
                                 + freeze_blur_label
                             )
+
+                        # -----------------------------------------
+                        # ZOOM
+                        # -----------------------------------------
 
                         filter_parts.append(
                             freeze_blur_label
@@ -4005,21 +3833,9 @@ if (
             # OUTPUT
             # =================================================
 
-            if is_animal_mode:
-
-                output_filename = (
-                    "final_animal_documentary.mp4"
-                )
-
-            else:
-
-                output_filename = (
-                    "final_movie_recap.mp4"
-                )
-
             output_video = os.path.join(
                 tempfile.gettempdir(),
-                output_filename
+                "final_movie_recap.mp4"
             )
 
             command = [
@@ -4057,7 +3873,7 @@ if (
             # =================================================
 
             st.info(
-                f"⏳ Creating final {mode_name} video..."
+                "⏳ Creating final video..."
             )
 
             if blur_enabled:
@@ -4094,7 +3910,7 @@ if (
                 )
 
                 st.success(
-                    f"✅ Final {mode_name} Video "
+                    "✅ Final Recap Video "
                     "Created Successfully!"
                 )
 
@@ -4126,7 +3942,9 @@ if (
                     st.download_button(
                         "⬇️ Download Final Video",
                         f.read(),
-                        file_name=output_filename,
+                        file_name=(
+                            "final_movie_recap.mp4"
+                        ),
                         mime="video/mp4"
                     )
 
