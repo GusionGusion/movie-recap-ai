@@ -64,209 +64,135 @@ st.write(
 # =========================================================
 
 # =========================================================
-# AI PROVIDERS / BOTH API KEYS
+# AI GATEWAY
 # =========================================================
-GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
-OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", "")
-GEMINI_CLIENT = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
-OPENAI_CLIENT = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
-OPENAI_MODELS = ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"]
-if "openai_usage" not in st.session_state:
-    st.session_state["openai_usage"]={"calls":0,"input_tokens":0,"output_tokens":0,"total_tokens":0,"last_model":"-"}
-def record_openai_usage(response, model):
-    u=getattr(response,"usage",None); d=st.session_state["openai_usage"]; d["calls"]+=1; d["last_model"]=model
-    if u is not None:
-        d["input_tokens"]+=int(getattr(u,"input_tokens",0) or 0); d["output_tokens"]+=int(getattr(u,"output_tokens",0) or 0); d["total_tokens"]+=int(getattr(u,"total_tokens",0) or 0)
-def openai_text(prompt,model):
-    if not OPENAI_CLIENT: raise RuntimeError("OPENAI_API_KEY is missing in Streamlit Secrets.")
-    r=OPENAI_CLIENT.responses.create(model=model,input=prompt); record_openai_usage(r,model); return r.output_text or ""
-def openai_vision(prompt,items,model):
-    if not OPENAI_CLIENT: raise RuntimeError("OPENAI_API_KEY is missing in Streamlit Secrets.")
-    c=[{"type":"input_text","text":prompt}]
-    for i,x in enumerate(items,1):
-        c.append({"type":"input_text","text":f"\n\nSCENE {i}\nTimestamp: {x['start']:.2f}s → {x['end']:.2f}s\nTranscript: {x['text']}\n"})
-        b64=base64.b64encode(x["image"]).decode("utf-8"); c.append({"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}","detail":"low"})
-    r=OPENAI_CLIENT.responses.create(model=model,input=[{"role":"user","content":c}]); record_openai_usage(r,model); return r.output_text or ""
-def ai_text(prompt,workflow,model):
-    if workflow=="Gemini Only":
-        if not GEMINI_CLIENT: raise RuntimeError("GEMINI_API_KEY is missing in Streamlit Secrets.")
-        r=generate_gemini_tracked(GEMINI_CLIENT,prompt,"gemini-3.6-flash"); return r.text if r else ""
-    return openai_text(prompt,model)
-def ai_scene(prompt,items,workflow,model):
-    if workflow in ("Gemini + OpenAI (Hybrid)","Gemini Only"):
-        if not GEMINI_CLIENT: raise RuntimeError("GEMINI_API_KEY is missing in Streamlit Secrets.")
-        c=[types.Part.from_text(text=prompt)]
-        for i,x in enumerate(items,1):
-            c.append(types.Part.from_text(text=f"\n\nSCENE {i}\nTimestamp: {x['start']:.2f}s → {x['end']:.2f}s\nTranscript: {x['text']}\n")); c.append(types.Part.from_bytes(data=x["image"],mime_type="image/jpeg"))
-        r=generate_gemini_tracked(GEMINI_CLIENT,c,"gemini-3.6-flash"); return r.text if r else ""
-    return openai_vision(prompt,items,model)
-def show_openai_usage_sidebar():
-    d=st.session_state["openai_usage"]
-    with st.sidebar:
-        st.markdown("### 🤖 OpenAI Usage"); st.metric("API Calls (this session)",d["calls"]); st.caption(f"Last model: {d['last_model']}"); st.write(f"📥 Input tokens: **{d['input_tokens']:,}**"); st.write(f"📤 Output tokens: **{d['output_tokens']:,}**"); st.write(f"🔢 Total tokens: **{d['total_tokens']:,}**")
+# All text/vision AI requests are routed through ai.py.
+# Video processing, Whisper, TTS, subtitles, blur, and FFmpeg remain unchanged.
 
-# =========================================================
-# GEMINI USAGE MONITOR
-# =========================================================
+from ai import generate_text, generate_vision
 
-if "gemini_usage" not in st.session_state:
-    st.session_state["gemini_usage"] = {
+
+OPENAI_MODELS = [
+    "gpt-5.6-luna",
+    "gpt-5.6-terra",
+    "gpt-5.6-sol"
+]
+
+if "ai_gateway_usage" not in st.session_state:
+    st.session_state["ai_gateway_usage"] = {
         "calls": 0,
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "thoughts_tokens": 0,
-        "total_tokens": 0,
-        "last_model": "-",
+        "last_task": "-",
     }
 
 
-def record_gemini_usage(response, model_name):
-    """Record token usage returned by Gemini for this Streamlit session."""
-
-    usage = getattr(response, "usage_metadata", None)
-
-    data = st.session_state["gemini_usage"]
+def record_ai_gateway_call(task):
+    data = st.session_state["ai_gateway_usage"]
     data["calls"] += 1
-    data["last_model"] = model_name
-
-    if usage is not None:
-        data['input_tokens'] += int(getattr(usage, "prompt_token_count", 0) or 0)
-        data['output_tokens'] += int(getattr(usage, "candidates_token_count", 0) or 0)
-        data['thoughts_tokens'] += int(getattr(usage, "thoughts_token_count", 0) or 0)
-        data["total_tokens"] += int(getattr(usage, "total_token_count", 0) or 0)
+    data["last_task"] = task
 
 
-def generate_gemini_tracked(
-    client,
-    contents,
-    model="gemini-3.6-flash",
-    max_retries=4
-):
+def _gateway_text(prompt, task):
+    """Send one text request through the AI Gateway."""
+    result = generate_text(prompt)
+    record_ai_gateway_call(task)
+    return result or ""
+
+
+def _make_scene_contact_sheet(items):
     """
-    Gemini request wrapper with limited 503 retry/backoff.
-
-    503 is usually a temporary service/model availability problem,
-    so retry only 503 errors. Other errors are raised immediately.
-    A maximum of 5 total attempts is allowed (initial request + 4 retries).
+    Combine scene frames into one JPEG so Scene Analysis remains one
+    vision request instead of making one API request per frame.
     """
+    frames = []
 
-    last_error = None
-
-    for attempt in range(max_retries + 1):
-
+    for index, item in enumerate(items, 1):
         try:
+            data = item.get("image")
+            if not data:
+                continue
 
-            response = client.models.generate_content(
-                model=model,
-                contents=contents
+            array = __import__("numpy").frombuffer(data, dtype=__import__("numpy").uint8)
+            frame = cv2.imdecode(array, cv2.IMREAD_COLOR)
+            if frame is None:
+                continue
+
+            frame = cv2.resize(frame, (240, 427), interpolation=cv2.INTER_AREA)
+            cv2.rectangle(frame, (0, 0), (239, 32), (0, 0, 0), -1)
+            cv2.putText(
+                frame,
+                f"SCENE {index}",
+                (8, 22),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (255, 255, 255),
+                1,
+                cv2.LINE_AA
             )
+            frames.append(frame)
+        except Exception:
+            continue
 
-            record_gemini_usage(
-                response,
-                model
-            )
+    if not frames:
+        return None
 
-            return response
+    columns = 4
+    rows = int(math.ceil(len(frames) / columns))
+    sheet = __import__("numpy").zeros(
+        (rows * 427, columns * 240, 3),
+        dtype=__import__("numpy").uint8
+    )
 
-        except Exception as e:
+    for i, frame in enumerate(frames):
+        r = i // columns
+        c = i % columns
+        sheet[r * 427:(r + 1) * 427, c * 240:(c + 1) * 240] = frame
 
-            last_error = e
+    success, encoded = cv2.imencode(
+        ".jpg",
+        sheet,
+        [cv2.IMWRITE_JPEG_QUALITY, 80]
+    )
 
-            error_text = str(e).lower()
-
-            is_503 = (
-                "503" in error_text
-                or "unavailable" in error_text
-                or "service unavailable" in error_text
-            )
-
-            if not is_503 or attempt >= max_retries:
-                raise
-
-            wait_seconds = 2 ** (attempt + 1)
-
-            st.warning(
-                f"⚠️ Gemini service temporarily unavailable (503). "
-                f"Retry {attempt + 1}/{max_retries} in "
-                f"{wait_seconds}s..."
-            )
-
-            time.sleep(wait_seconds)
-
-    raise last_error
+    return encoded.tobytes() if success else None
 
 
-def show_gemini_usage_sidebar():
-    """Show session usage. Exact remaining Google quota/credit is not exposed by the API key."""
+def _gateway_scene(prompt, items):
+    """Send Scene Analysis through ai.py as a single vision request."""
+    image_bytes = _make_scene_contact_sheet(items)
 
-    data = st.session_state["gemini_usage"]
+    if not image_bytes:
+        raise RuntimeError("Scene Analysis frames could not be prepared.")
 
+    result = generate_vision(
+        prompt,
+        image_bytes,
+        "image/jpeg"
+    )
+    record_ai_gateway_call("Scene Analysis")
+    return result or ""
+
+
+def ai_text(prompt, workflow, model):
+    # workflow/model are kept in the function signature so the rest of the
+    # original app does not need unnecessary changes. Provider selection is
+    # now handled by ai.py.
+    return _gateway_text(prompt, "Text Generation")
+
+
+def ai_scene(prompt, items, workflow, model):
+    return _gateway_scene(prompt, items)
+
+
+def show_ai_gateway_usage_sidebar():
+    data = st.session_state["ai_gateway_usage"]
     with st.sidebar:
-        st.markdown("### 🧠 Gemini Usage")
-        st.metric("API Calls (this session)", data["calls"])
-        st.caption(f"Last model: {data['last_model']}")
-        st.write(f"📥 Input tokens: **{data['input_tokens']:,}**")
-        st.write(f"📤 Output tokens: **{data['output_tokens']:,}**")
-        st.write(f"🧠 Thinking tokens: **{data['thoughts_tokens']:,}**")
-        st.write(f"🔢 Total tokens: **{data['total_tokens']:,}**")
-
-        # Gemini 3.6 Flash Standard pricing currently published by Google:
-        # $0.75 / 1M input tokens and $3.75 / 1M output tokens through
-        # December 31, 2026. This is only an ESTIMATE; Google billing
-        # balance itself is not exposed by the Gemini API response.
-        estimated_cost = (
-            (data['input_tokens'] / 1_000_000) * 0.75
-            + (data['output_tokens'] / 1_000_000) * 3.75
-        )
-
-        st.write(f"💵 Estimated API cost: **${estimated_cost:.4f}**")
-
-        starting_credit = st.number_input(
-            "💳 Starting Credit (USD)",
-            min_value=0.0,
-            value=5.0,
-            step=1.0,
-            key="gemini_starting_credit"
-        )
-
-        estimated_remaining = max(
-            0.0,
-            float(starting_credit) - estimated_cost
-        )
-
-        st.metric(
-            "💰 Estimated Credit Remaining",
-            f"${estimated_remaining:.4f}"
-        )
-
-        st.caption(
-            "⚠️ This is an estimated balance from token usage, not Google's "
-            "actual billing balance. Free-tier quota remaining is not exposed "
-            "directly through the Gemini API response."
-        )
-
-        st.markdown(
-            "[📊 Open Google AI Studio Usage](https://aistudio.google.com/)"
-        )
-
-        if st.button("🔄 Reset Usage Counter", use_container_width=True):
-            st.session_state["gemini_usage"] = {
-                "calls": 0,
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "thoughts_tokens": 0,
-                "total_tokens": 0,
-                "last_model": "-",
-            }
-            st.rerun()
-
-        st.markdown(
-            "[📊 Open Google AI Studio Usage](https://aistudio.google.com/)"
-        )
+        st.markdown("### 🤖 AI Gateway")
+        st.metric("AI Requests (this session)", data["calls"])
+        st.caption(f"Last task: {data['last_task']}")
+        st.caption("Gemini / OpenAI / OpenRouter routing is handled by ai.py.")
 
 
-show_gemini_usage_sidebar()
-show_openai_usage_sidebar()
+show_ai_gateway_usage_sidebar()
 
 
 def get_audio_duration(media_file):
@@ -3950,4 +3876,3 @@ if (
             st.error(
                 f"❌ Final Video Export Error: {e}"
             )
-            
