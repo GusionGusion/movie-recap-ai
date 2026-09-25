@@ -879,6 +879,19 @@ if uploaded_file is not None:
 st.subheader(
     "⚙️ Recap Settings"
 )
+# =========================================================
+# RECAP MODE
+# =========================================================
+
+recap_mode = st.selectbox(
+    "🎬 Recap Mode",
+    [
+        "🎬 Movie Recap",
+        "🐾 Animal Documentary Recap"
+    ],
+    index=0,
+    key="main_recap_mode"
+)
 
 ai_col1, ai_col2 = st.columns(2)
 with ai_col1:
