@@ -1856,7 +1856,8 @@ if "ai_scene_analysis" in st.session_state:
                 ]
             )
 
-            prompt = f"""
+                        if recap_mode == "🎬 Movie Recap":
+                prompt = f"""
 You are a professional movie recap script writer.
 
 Write the recap using ONLY the Scene Analysis below.
@@ -1888,6 +1889,43 @@ Scene Analysis:
 
 {scene_analysis}
 """
+
+            else:
+                prompt = f"""
+You are a professional animal documentary recap script writer.
+
+Write a natural and engaging animal documentary narration
+using ONLY the Scene Analysis below.
+
+IMPORTANT:
+
+The Scene Analysis was created by checking actual video frames.
+
+Rules:
+
+- Follow the exact scene order.
+- Do not reorder scenes.
+- Do not invent animal behavior.
+- Do not invent biological facts.
+- Do not invent abilities, strengths, or weaknesses.
+- Do not invent species information.
+- Do not add information from outside the video.
+- Do not add events that are not in Scene Analysis.
+- Do not repeat the same scene.
+- Every statement must be traceable to the actual scenes.
+- Describe observable animal behavior naturally.
+- If a detail is not clearly shown, leave it out.
+- Do not add headings.
+- Do not add notes.
+- Write only the documentary narration.
+- Keep the narration natural for voiceover.
+- Keep the narration chronological.
+
+Scene Analysis:
+
+{scene_analysis}
+"""
+
 
             recap_text = ai_text(
                 prompt,
