@@ -1697,7 +1697,7 @@ if "transcript_result" in st.session_state:
                             "❌ No video frames could be extracted."
                         )
                     else:
-                    if recap_mode == "🎬 Movie Recap":
+                        if recap_mode == "🎬 Movie Recap":
     prompt = """
 You are analyzing an actual movie/video.
 
