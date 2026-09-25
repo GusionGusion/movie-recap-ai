@@ -1693,12 +1693,12 @@ if "transcript_result" in st.session_state:
 
                     if not scene_items:
 
-                        st.error(
-                            "❌ No video frames could be extracted."
-                        )
-                    else:
-                        if recap_mode == "🎬 Movie Recap":
-                            prompt = """
+                                            st.error(
+                        "❌ No video frames could be extracted."
+                    )
+                else:
+                    if recap_mode == "🎬 Movie Recap":
+                        prompt = """
 You are analyzing an actual movie/video.
 
 For every supplied timestamp:
@@ -1738,8 +1738,8 @@ Rules:
   the actual video.
 """
 
-else:
-    prompt = """
+                    else:
+                        prompt = """
 You are analyzing an actual animal or wildlife documentary video.
 
 For every supplied timestamp:
@@ -1782,6 +1782,7 @@ Rules:
 - The purpose is to make the later animal documentary recap
   match the actual video.
 """
+                    
 
 
 
