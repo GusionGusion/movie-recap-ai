@@ -30,9 +30,9 @@ except Exception:
 # CONFIG
 # =========================================================
 
-DEFAULT_OPENROUTER_MODEL = os.getenv(
-    "OPENROUTER_MODEL",
-    "openrouter/free"
+DEFAULT_GEMINI_MODEL = os.getenv(
+    "GEMINI_MODEL",
+    "gemini-3.6-flash"
 )
 
 DEFAULT_OPENAI_MODEL = os.getenv(
@@ -40,22 +40,30 @@ DEFAULT_OPENAI_MODEL = os.getenv(
     "gpt-4o-mini"
 )
 
+# OpenRouter Free Router
 DEFAULT_OPENROUTER_MODEL = os.getenv(
     "OPENROUTER_MODEL",
-    "google/gemini-2.5-flash"
+    "openrouter/free"
 )
 
 MAX_RETRIES = 3
+
+OPENROUTER_BASE_URL = (
+    "https://openrouter.ai/api/v1"
+)
 
 
 # =========================================================
 # API KEY HELPERS
 # =========================================================
 
-def get_env_or_secret(name: str, default: str = "") -> str:
+def get_env_or_secret(
+    name: str,
+    default: str = ""
+) -> str:
     """
     Get API key from environment first.
-    Then try Streamlit secrets if Streamlit is available.
+    Then try Streamlit secrets.
     """
 
     value = os.getenv(name)
@@ -67,9 +75,14 @@ def get_env_or_secret(name: str, default: str = "") -> str:
         import streamlit as st
 
         try:
-            value = st.secrets.get(name, "")
+            value = st.secrets.get(
+                name,
+                ""
+            )
+
             if value:
                 return str(value).strip()
+
         except Exception:
             pass
 
@@ -80,15 +93,21 @@ def get_env_or_secret(name: str, default: str = "") -> str:
 
 
 def get_gemini_api_key() -> str:
-    return get_env_or_secret("GEMINI_API_KEY")
+    return get_env_or_secret(
+        "GEMINI_API_KEY"
+    )
 
 
 def get_openai_api_key() -> str:
-    return get_env_or_secret("OPENAI_API_KEY")
+    return get_env_or_secret(
+        "OPENAI_API_KEY"
+    )
 
 
 def get_openrouter_api_key() -> str:
-    return get_env_or_secret("OPENROUTER_API_KEY")
+    return get_env_or_secret(
+        "OPENROUTER_API_KEY"
+    )
 
 
 # =========================================================
@@ -96,10 +115,17 @@ def get_openrouter_api_key() -> str:
 # =========================================================
 
 def get_provider_status() -> Dict[str, bool]:
+
     return {
-        "gemini": bool(get_gemini_api_key()),
-        "openai": bool(get_openai_api_key()),
-        "openrouter": bool(get_openrouter_api_key()),
+        "gemini": bool(
+            get_gemini_api_key()
+        ),
+        "openai": bool(
+            get_openai_api_key()
+        ),
+        "openrouter": bool(
+            get_openrouter_api_key()
+        ),
     }
 
 
@@ -107,22 +133,37 @@ def get_provider_status() -> Dict[str, bool]:
 # TEXT CLEANING
 # =========================================================
 
-def clean_ai_text(text: Any) -> str:
-    """
-    Normalize AI response into plain text.
-    """
+def clean_ai_text(
+    text: Any
+) -> str:
 
     if text is None:
         return ""
 
     text = str(text)
 
-    text = text.replace("\r\n", "\n")
-    text = text.replace("\r", "\n")
+    text = text.replace(
+        "\r\n",
+        "\n"
+    )
+
+    text = text.replace(
+        "\r",
+        "\n"
+    )
 
     # Remove accidental markdown fences
-    text = re.sub(r"```(?:text|markdown)?", "", text, flags=re.IGNORECASE)
-    text = text.replace("```", "")
+    text = re.sub(
+        r"```(?:text|markdown)?",
+        "",
+        text,
+        flags=re.IGNORECASE
+    )
+
+    text = text.replace(
+        "```",
+        ""
+    )
 
     return text.strip()
 
@@ -132,6 +173,7 @@ def clean_ai_text(text: Any) -> str:
 # =========================================================
 
 def get_gemini_client():
+
     if genai is None:
         raise RuntimeError(
             "Google GenAI package is not installed."
@@ -144,7 +186,9 @@ def get_gemini_client():
             "GEMINI_API_KEY is not configured."
         )
 
-    return genai.Client(api_key=api_key)
+    return genai.Client(
+        api_key=api_key
+    )
 
 
 # =========================================================
@@ -160,25 +204,41 @@ def gemini_text(
 
     client = get_gemini_client()
 
-    model = model or DEFAULT_GEMINI_MODEL
+    model = (
+        model
+        or DEFAULT_GEMINI_MODEL
+    )
 
     last_error = None
 
-    for attempt in range(max_retries):
+    for attempt in range(
+        max_retries
+    ):
 
         try:
-            response = client.models.generate_content(
-                model=model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=temperature
-                ),
+
+            response = (
+                client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=(
+                        types.GenerateContentConfig(
+                            temperature=temperature
+                        )
+                    ),
+                )
             )
 
-            text = getattr(response, "text", None)
+            text = getattr(
+                response,
+                "text",
+                None
+            )
 
             if text:
-                return clean_ai_text(text)
+                return clean_ai_text(
+                    text
+                )
 
             raise RuntimeError(
                 "Gemini returned an empty response."
@@ -188,16 +248,19 @@ def gemini_text(
 
             last_error = e
 
-            if attempt >= max_retries - 1:
+            if (
+                attempt
+                >= max_retries - 1
+            ):
                 break
 
-            # Exponential backoff
-            wait_time = 2 ** attempt
-
-            time.sleep(wait_time)
+            time.sleep(
+                2 ** attempt
+            )
 
     raise RuntimeError(
-        f"Gemini request failed after {max_retries} attempts: "
+        "Gemini request failed after "
+        f"{max_retries} attempts: "
         f"{last_error}"
     )
 
@@ -217,52 +280,74 @@ def gemini_vision(
 
     client = get_gemini_client()
 
-    model = model or DEFAULT_GEMINI_MODEL
+    model = (
+        model
+        or DEFAULT_GEMINI_MODEL
+    )
 
     last_error = None
 
-    for attempt in range(max_retries):
+    for attempt in range(
+        max_retries
+    ):
 
         try:
 
-            image_part = types.Part.from_bytes(
-                data=image_bytes,
-                mime_type=mime_type,
+            image_part = (
+                types.Part.from_bytes(
+                    data=image_bytes,
+                    mime_type=mime_type,
+                )
             )
 
-            response = client.models.generate_content(
-                model=model,
-                contents=[
-                    prompt,
-                    image_part,
-                ],
-                config=types.GenerateContentConfig(
-                    temperature=temperature
-                ),
+            response = (
+                client.models.generate_content(
+                    model=model,
+                    contents=[
+                        prompt,
+                        image_part,
+                    ],
+                    config=(
+                        types.GenerateContentConfig(
+                            temperature=temperature
+                        )
+                    ),
+                )
             )
 
-            text = getattr(response, "text", None)
+            text = getattr(
+                response,
+                "text",
+                None
+            )
 
             if text:
-                return clean_ai_text(text)
+                return clean_ai_text(
+                    text
+                )
 
             raise RuntimeError(
-                "Gemini Vision returned an empty response."
+                "Gemini Vision returned "
+                "an empty response."
             )
 
         except Exception as e:
 
             last_error = e
 
-            if attempt >= max_retries - 1:
+            if (
+                attempt
+                >= max_retries - 1
+            ):
                 break
 
-            wait_time = 2 ** attempt
-
-            time.sleep(wait_time)
+            time.sleep(
+                2 ** attempt
+            )
 
     raise RuntimeError(
-        f"Gemini Vision failed after {max_retries} attempts: "
+        "Gemini Vision failed after "
+        f"{max_retries} attempts: "
         f"{last_error}"
     )
 
@@ -285,7 +370,9 @@ def get_openai_client():
             "OPENAI_API_KEY is not configured."
         )
 
-    return OpenAI(api_key=api_key)
+    return OpenAI(
+        api_key=api_key
+    )
 
 
 # =========================================================
@@ -300,33 +387,46 @@ def openai_text(
 
     client = get_openai_client()
 
-    model = model or DEFAULT_OPENAI_MODEL
-
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {
-                "role": "user",
-                "content": prompt,
-            }
-        ],
-        temperature=temperature,
+    model = (
+        model
+        or DEFAULT_OPENAI_MODEL
     )
 
-    text = response.choices[0].message.content
+    response = (
+        client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            temperature=temperature,
+        )
+    )
 
-    return clean_ai_text(text)
+    text = (
+        response
+        .choices[0]
+        .message
+        .content
+    )
+
+    return clean_ai_text(
+        text
+    )
 
 
 # =========================================================
-# OPENROUTER
+# OPENROUTER CLIENT
 # =========================================================
 
 def get_openrouter_client():
 
     if OpenAI is None:
         raise RuntimeError(
-            "OpenAI package is required for OpenRouter."
+            "OpenAI package is required "
+            "for OpenRouter."
         )
 
     api_key = get_openrouter_api_key()
@@ -338,9 +438,13 @@ def get_openrouter_client():
 
     return OpenAI(
         api_key=api_key,
-        base_url="https://openrouter.ai/api/v1",
+        base_url=OPENROUTER_BASE_URL,
     )
 
+
+# =========================================================
+# OPENROUTER TEXT
+# =========================================================
 
 def openrouter_text(
     prompt: str,
@@ -350,22 +454,113 @@ def openrouter_text(
 
     client = get_openrouter_client()
 
-    model = model or DEFAULT_OPENROUTER_MODEL
-
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {
-                "role": "user",
-                "content": prompt,
-            }
-        ],
-        temperature=temperature,
+    model = (
+        model
+        or DEFAULT_OPENROUTER_MODEL
     )
 
-    text = response.choices[0].message.content
+    response = (
+        client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            temperature=temperature,
+        )
+    )
 
-    return clean_ai_text(text)
+    if not response.choices:
+        raise RuntimeError(
+            "OpenRouter returned no choices."
+        )
+
+    text = (
+        response
+        .choices[0]
+        .message
+        .content
+    )
+
+    return clean_ai_text(
+        text
+    )
+
+
+# =========================================================
+# OPENROUTER VISION
+# =========================================================
+
+def openrouter_vision(
+    prompt: str,
+    image_bytes: bytes,
+    mime_type: str = "image/jpeg",
+    model: Optional[str] = None,
+    temperature: float = 0.2,
+) -> str:
+
+    client = get_openrouter_client()
+
+    model = (
+        model
+        or DEFAULT_OPENROUTER_MODEL
+    )
+
+    import base64
+
+    encoded_image = (
+        base64.b64encode(
+            image_bytes
+        ).decode("utf-8")
+    )
+
+    image_url = (
+        f"data:{mime_type};base64,"
+        f"{encoded_image}"
+    )
+
+    response = (
+        client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": prompt,
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": image_url
+                            },
+                        },
+                    ],
+                }
+            ],
+            temperature=temperature,
+        )
+    )
+
+    if not response.choices:
+        raise RuntimeError(
+            "OpenRouter Vision returned "
+            "no choices."
+        )
+
+    text = (
+        response
+        .choices[0]
+        .message
+        .content
+    )
+
+    return clean_ai_text(
+        text
+    )
 
 
 # =========================================================
@@ -379,7 +574,11 @@ def generate_text(
     temperature: float = 0.4,
 ) -> str:
 
-    provider = provider.lower().strip()
+    provider = (
+        provider
+        .lower()
+        .strip()
+    )
 
     if provider == "gemini":
 
@@ -406,7 +605,8 @@ def generate_text(
         )
 
     raise ValueError(
-        f"Unsupported AI provider: {provider}"
+        f"Unsupported AI provider: "
+        f"{provider}"
     )
 
 
@@ -423,10 +623,31 @@ def generate_vision(
     temperature: float = 0.2,
 ) -> str:
 
-    # Normalize provider
-    provider = provider.lower().strip()
+    provider = (
+        provider
+        .lower()
+        .strip()
+    )
 
-    # Gemini Vision
+    # -----------------------------------------------------
+    # Compatibility:
+    # Some old app.py versions may accidentally pass
+    # provider through mime_type.
+    # -----------------------------------------------------
+
+    if mime_type in {
+        "gemini",
+        "openai",
+        "openrouter",
+    }:
+
+        provider = mime_type
+        mime_type = "image/jpeg"
+
+    # -----------------------------------------------------
+    # GEMINI VISION
+    # -----------------------------------------------------
+
     if provider == "gemini":
 
         return gemini_vision(
@@ -437,8 +658,23 @@ def generate_vision(
             temperature=temperature,
         )
 
+    # -----------------------------------------------------
+    # OPENROUTER VISION
+    # -----------------------------------------------------
+
+    if provider == "openrouter":
+
+        return openrouter_vision(
+            prompt=prompt,
+            image_bytes=image_bytes,
+            mime_type=mime_type,
+            model=model,
+            temperature=temperature,
+        )
+
     raise ValueError(
-        f"Vision provider '{provider}' is not implemented yet."
+        f"Vision provider "
+        f"'{provider}' is not implemented yet."
     )
 
 
@@ -453,7 +689,8 @@ def scene_analysis_prompt(
 ) -> str:
 
     return f"""
-Analyze the provided movie frame together with the transcript segment.
+Analyze the provided movie frame together
+with the transcript segment.
 
 Timestamp:
 {timestamp_start} → {timestamp_end}
@@ -469,62 +706,79 @@ Dialogue: ...
 
 Rules:
 - Describe only what is actually visible in the frame.
-- Use the transcript only for the dialogue/context.
-- Do not invent characters, events, locations, objects, or actions.
+- Use the transcript only for dialogue/context.
+- Do not invent characters, events, locations,
+  objects, or actions.
 - Keep the chronological meaning.
 - Do not add extra sections.
 """.strip()
 
 
-def english_recap_prompt(scene_analysis: str) -> str:
+def english_recap_prompt(
+    scene_analysis: str
+) -> str:
 
     return f"""
-Create a concise movie recap narration from the scene analysis below.
+Create a concise movie recap narration
+from the scene analysis below.
 
 SCENE ANALYSIS:
 {scene_analysis}
 
 Rules:
 - Follow the exact chronological order.
-- Use only information contained in the scene analysis.
+- Use only information contained in
+  the scene analysis.
 - Do not invent events or dialogue.
-- Write natural narration suitable for voiceover.
+- Write natural narration suitable
+  for voiceover.
 - Do not use headings.
 - Do not add explanations.
 """.strip()
 
 
-def myanmar_translation_prompt(english_recap: str) -> str:
+def myanmar_translation_prompt(
+    english_recap: str
+) -> str:
 
     return f"""
-Translate the following English movie recap narration into
-natural spoken Myanmar language.
+Translate the following English movie
+recap narration into natural spoken
+Myanmar language.
 
 ENGLISH:
 {english_recap}
 
 Rules:
-- Preserve the exact meaning and chronological order.
+- Preserve the exact meaning.
+- Preserve chronological order.
 - Do not add information.
 - Do not remove important information.
 - Do not leave English sentences.
 - Make it natural for Myanmar voiceover.
 - Use conversational spoken Myanmar.
+- Use natural Myanmar sentence endings.
+- Do not force or replace words such as
+  "တယ်" with another form.
 - Return only the Myanmar narration.
 """.strip()
 
 
-def caption_prompt(myanmar_recap: str) -> str:
+def caption_prompt(
+    myanmar_recap: str
+) -> str:
 
     return f"""
-Create one short Myanmar social-media caption for this movie recap.
+Create one short Myanmar social-media
+caption for this movie recap.
 
 RECAP:
 {myanmar_recap}
 
 Rules:
 - Maximum 3 lines.
-- Make it interesting and curiosity-driven.
+- Make it interesting and
+  curiosity-driven.
 - Do not mislead.
 - Do not reveal everything.
 - Use natural Myanmar.
@@ -543,7 +797,9 @@ def generate_recap_script(
     provider: str = "gemini",
 ) -> str:
 
-    prompt = english_recap_prompt(scene_analysis)
+    prompt = english_recap_prompt(
+        scene_analysis
+    )
 
     return generate_text(
         prompt,
@@ -557,7 +813,9 @@ def translate_recap_to_myanmar(
     provider: str = "gemini",
 ) -> str:
 
-    prompt = myanmar_translation_prompt(english_recap)
+    prompt = myanmar_translation_prompt(
+        english_recap
+    )
 
     return generate_text(
         prompt,
@@ -571,7 +829,9 @@ def generate_social_caption(
     provider: str = "gemini",
 ) -> str:
 
-    prompt = caption_prompt(myanmar_recap)
+    prompt = caption_prompt(
+        myanmar_recap
+    )
 
     return generate_text(
         prompt,
@@ -591,7 +851,8 @@ def animal_scene_prompt(
 ) -> str:
 
     return f"""
-Analyze the animal documentary frame and transcript.
+Analyze the animal documentary frame
+and transcript.
 
 Timestamp:
 {timestamp_start} → {timestamp_end}
@@ -606,37 +867,48 @@ Visual: ...
 Dialogue: ...
 
 Rules:
-- Describe only visible animal behavior and the provided dialogue.
+- Describe only visible animal behavior
+  and the provided dialogue.
 - Do not invent behavior or facts.
-- Do not add scientific claims that are not supported.
+- Do not add scientific claims that are
+  not supported.
 - Keep the original chronological order.
 - Do not add extra sections.
 """.strip()
 
 
-def animal_recap_prompt(scene_analysis: str) -> str:
+def animal_recap_prompt(
+    scene_analysis: str
+) -> str:
 
     return f"""
-Create a short documentary-style narration from the scene analysis.
+Create a short documentary-style
+narration from the scene analysis.
 
 SCENE ANALYSIS:
 {scene_analysis}
 
 Rules:
 - Follow chronological order.
-- Use only information supported by the scene analysis.
-- Highlight observable behavior, abilities, actions, strengths,
-  weaknesses, or surprising details only when supported.
+- Use only information supported
+  by the scene analysis.
+- Highlight observable behavior,
+  abilities, actions, strengths,
+  weaknesses, or surprising details
+  only when supported.
 - Do not invent facts.
 - Natural documentary narration.
 - Return narration only.
 """.strip()
 
 
-def animal_myanmar_prompt(english_recap: str) -> str:
+def animal_myanmar_prompt(
+    english_recap: str
+) -> str:
 
     return f"""
-Translate this animal documentary narration into natural spoken Myanmar.
+Translate this animal documentary
+narration into natural spoken Myanmar.
 
 ENGLISH:
 {english_recap}
@@ -644,9 +916,12 @@ ENGLISH:
 Rules:
 - Preserve meaning.
 - Do not invent facts.
-- Natural Myanmar documentary voiceover style.
+- Natural Myanmar documentary
+  voiceover style.
 - Do not leave English sentences.
-- Where natural, use "ဒယ်" instead of "တယ်".
+- Use natural Myanmar sentence endings.
+- Do not force or replace words such as
+  "တယ်" with another form.
 - Return only Myanmar narration.
 """.strip()
 
@@ -664,7 +939,8 @@ def ai_health_check() -> Dict[str, Any]:
         "providers": status,
         "gemini_model": DEFAULT_GEMINI_MODEL,
         "openai_model": DEFAULT_OPENAI_MODEL,
-        "openrouter_model": DEFAULT_OPENROUTER_MODEL,
+        "openrouter_model":
+            DEFAULT_OPENROUTER_MODEL,
     }
 
 
@@ -681,6 +957,7 @@ __all__ = [
 
     "openai_text",
     "openrouter_text",
+    "openrouter_vision",
 
     "generate_text",
     "generate_vision",
