@@ -417,18 +417,16 @@ def generate_text(
 def generate_vision(
     prompt: str,
     image_bytes: bytes,
+    mime_type: str = "image/jpeg",
     provider: str = "gemini",
     model: Optional[str] = None,
-    mime_type: str = "image/jpeg",
     temperature: float = 0.2,
 ) -> str:
 
+    # Normalize provider
     provider = provider.lower().strip()
 
-    # Current implementation uses Gemini Vision.
-    # Other providers can be added later without
-    # changing the main application structure.
-
+    # Gemini Vision
     if provider == "gemini":
 
         return gemini_vision(
