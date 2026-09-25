@@ -2150,7 +2150,7 @@ It must NOT be:
 CAPTION REQUIREMENTS:
 
 - Minimum 1 line.
-- Maximum 3 lines.
+- Maximum 2 lines.
 - Write in natural Myanmar Burmese.
 - Make it interesting and attention-grabbing.
 - Match the actual video content.
