@@ -30,9 +30,9 @@ except Exception:
 # CONFIG
 # =========================================================
 
-DEFAULT_GEMINI_MODEL = os.getenv(
-    "GEMINI_MODEL",
-    "gemini-3.6-flash"
+DEFAULT_OPENROUTER_MODEL = os.getenv(
+    "OPENROUTER_MODEL",
+    "openrouter/free"
 )
 
 DEFAULT_OPENAI_MODEL = os.getenv(
@@ -510,7 +510,6 @@ Rules:
 - Do not leave English sentences.
 - Make it natural for Myanmar voiceover.
 - Use conversational spoken Myanmar.
-- Where natural, use "ဒယ်" instead of "တယ်".
 - Return only the Myanmar narration.
 """.strip()
 
