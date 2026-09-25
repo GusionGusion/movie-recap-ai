@@ -1990,6 +1990,7 @@ if "recap_script" in st.session_state:
                 ]
             )
 
+            if recap_mode == "🎬 Movie Recap":
             prompt = f"""
 Translate the following movie recap narration
 into natural spoken Myanmar Burmese.
@@ -2003,9 +2004,35 @@ Rules:
 - Do not add explanation.
 - Do not add English.
 - Write only the Myanmar narration.
-- Make it natural for voiceover.
-- Use "ဒယ်" instead of "တယ်" at sentence endings
-  where it sounds natural.
+- Make it natural and smooth for voiceover.
+- Use natural Myanmar sentence endings.
+- Do not force or replace words such as "တယ်" with another form.
+- Keep the narration easy to understand and suitable for spoken delivery.
+
+English Recap:
+
+{recap_script}
+"""
+
+            else:
+                prompt = f"""
+Translate the following animal documentary recap narration
+into natural spoken Myanmar Burmese.
+
+Rules:
+
+- Preserve the exact meaning.
+- Do not add animal facts.
+- Do not remove information.
+- Keep chronological order.
+- Do not invent animal behavior or abilities.
+- Do not add explanation.
+- Do not add English.
+- Write only the Myanmar narration.
+- Make it natural and smooth for documentary voiceover.
+- Use natural Myanmar sentence endings.
+- Do not force or replace words such as "တယ်" with another form.
+- Keep the narration easy to understand and suitable for spoken delivery.
 
 English Recap:
 
