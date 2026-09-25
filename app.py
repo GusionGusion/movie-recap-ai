@@ -1698,8 +1698,8 @@ if "transcript_result" in st.session_state:
                         )
 
                     else:
-                        if recap_mode == "🎬 Movie Recap":
-                    prompt = """
+                                if recap_mode == "🎬 Movie Recap":
+            prompt = """
 You are analyzing an actual movie/video.
 
 For every supplied timestamp:
@@ -1773,8 +1773,6 @@ Rules:
 - Do not add extra sections.
 - Keep the output short and natural.
 """
-
-
 
                         scene_analysis = ai_scene(
                             prompt,
