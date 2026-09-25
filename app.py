@@ -1689,16 +1689,15 @@ if "transcript_result" in st.session_state:
                             }
                         )
 
-                    cap.release()
+                                        cap.release()
 
                     if not scene_items:
-
-                                            st.error(
-                        "❌ No video frames could be extracted."
-                    )
-                else:
-                    if recap_mode == "🎬 Movie Recap":
-                        prompt = """
+                        st.error(
+                            "❌ No video frames could be extracted."
+                        )
+                    else:
+                        if recap_mode == "🎬 Movie Recap":
+                            prompt = """
 You are analyzing an actual movie/video.
 
 For every supplied timestamp:
@@ -1734,12 +1733,10 @@ Rules:
 - Do not add Summary, Characters, Emotion, Analysis
   or any other extra sections.
 - Keep the output short and natural.
-- The purpose is to make the later movie recap match
-  the actual video.
 """
 
-                    else:
-                        prompt = """
+                        else:
+                            prompt = """
 You are analyzing an actual animal or wildlife documentary video.
 
 For every supplied timestamp:
@@ -1779,9 +1776,9 @@ Rules:
 - Do not add Summary, Characters, Emotion, Analysis,
   Animal Facts or any other extra sections.
 - Keep the output short and natural.
-- The purpose is to make the later animal documentary recap
-  match the actual video.
 """
+
+                    
                     
 
 
