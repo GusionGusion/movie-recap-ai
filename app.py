@@ -1699,7 +1699,7 @@ if "transcript_result" in st.session_state:
 
                     else:
                         if recap_mode == "🎬 Movie Recap":
-            prompt = """
+                    prompt = """
 You are analyzing an actual movie/video.
 
 For every supplied timestamp:
