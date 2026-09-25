@@ -1697,9 +1697,8 @@ if "transcript_result" in st.session_state:
                             "❌ No video frames could be extracted."
                         )
 
-                    else:
-                         if recap_mode == "🎬 Movie Recap":
-                        prompt = """
+                    if recap_mode == "🎬 Movie Recap":
+    prompt = """
 You are analyzing an actual movie/video.
 
 For every supplied timestamp:
@@ -1732,12 +1731,15 @@ Rules:
 - Do not repeat the same information.
 - If the frame does not clearly show something, do not guess it.
 - If transcript information is not visually confirmed, keep it only in Dialogue.
-- Do not add extra sections.
+- Do not add Summary, Characters, Emotion, Analysis
+  or any other extra sections.
 - Keep the output short and natural.
+- The purpose is to make the later movie recap match
+  the actual video.
 """
 
-        else:
-            prompt = """
+else:
+    prompt = """
 You are analyzing an actual animal or wildlife documentary video.
 
 For every supplied timestamp:
@@ -1760,18 +1762,25 @@ Dialogue: ...
 Rules:
 
 - Describe ONLY what is actually visible in the supplied frame.
-- Identify the animal only when clearly visible.
+- Identify the animal only when it is clearly visible.
 - Describe only visible animal behavior and actions.
 - Do NOT invent animal behavior.
 - Do NOT invent biological facts.
 - Do NOT invent abilities, strengths or weaknesses.
-- Do NOT guess the species when unclear.
+- Do NOT guess the species when the frame is unclear.
+- If something is not clearly visible, do not guess it.
+- Use the transcript only for spoken information.
+- If transcript information is not visually confirmed,
+  keep it only in Dialogue.
 - Keep the exact chronological order.
 - Keep each scene attached to its supplied timestamp.
 - Do not move dialogue between timestamps.
 - Do not repeat the same information.
-- Do not add extra sections.
+- Do not add Summary, Characters, Emotion, Analysis,
+  Animal Facts or any other extra sections.
 - Keep the output short and natural.
+- The purpose is to make the later animal documentary recap
+  match the actual video.
 """
 
 
