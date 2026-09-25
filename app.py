@@ -1689,7 +1689,8 @@ if "transcript_result" in st.session_state:
                             }
                         )
 
-                                        cap.release()
+                                      
+                       cap.release()
 
                     if not scene_items:
                         st.error(
