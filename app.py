@@ -1991,7 +1991,7 @@ if "recap_script" in st.session_state:
             )
 
             if recap_mode == "🎬 Movie Recap":
-            prompt = f"""
+                prompt = f"""
 Translate the following movie recap narration
 into natural spoken Myanmar Burmese.
 
