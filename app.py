@@ -71,6 +71,11 @@ st.write(
 
 from ai import generate_text, generate_vision
 
+# API key status is read here only for the existing UI indicator.
+# Actual AI requests are handled by ai.py.
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", "")
+
 
 OPENAI_MODELS = [
     "gpt-5.6-luna",
