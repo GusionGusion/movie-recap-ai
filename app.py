@@ -54,210 +54,87 @@ st.set_page_config(
 )
 
 st.title("🎬 Movie Recap AI")
-
 st.write(
     "Upload a movie and analyze video information."
 )
 
 
 # =========================================================
-# AI PROVIDER SETTINGS
+# HELPER FUNCTIONS
 # =========================================================
 
-if "ai_provider" not in st.session_state:
-    st.session_state["ai_provider"] = "Gemini"
-
-
-AI_PROVIDER = st.selectbox(
-    "🧠 AI Provider",
-    [
-        "Gemini",
-        "OpenAI"
-    ],
-    index=0 if st.session_state["ai_provider"] == "Gemini" else 1,
-    key="main_ai_provider"
-)
-
-st.session_state["ai_provider"] = AI_PROVIDER
-
-
-if AI_PROVIDER == "Gemini":
-
-    AI_MODEL = st.selectbox(
-        "🤖 Gemini Model",
-        [
-            "gemini-3.6-flash"
-        ],
-        index=0,
-        key="main_gemini_model"
-    )
-
-else:
-
-    AI_MODEL = st.selectbox(
-        "🤖 OpenAI Model",
-        [
-            "gpt-5.6-luna",
-            "gpt-5.6-terra",
-            "gpt-5.6-sol"
-        ],
-        index=0,
-        key="main_openai_model"
-    )
-
+# =========================================================
+# AI PROVIDERS / BOTH API KEYS
+# =========================================================
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", "")
+GEMINI_CLIENT = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+OPENAI_CLIENT = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+OPENAI_MODELS = ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"]
+if "openai_usage" not in st.session_state:
+    st.session_state["openai_usage"]={"calls":0,"input_tokens":0,"output_tokens":0,"total_tokens":0,"last_model":"-"}
+def record_openai_usage(response, model):
+    u=getattr(response,"usage",None); d=st.session_state["openai_usage"]; d["calls"]+=1; d["last_model"]=model
+    if u is not None:
+        d["input_tokens"]+=int(getattr(u,"input_tokens",0) or 0); d["output_tokens"]+=int(getattr(u,"output_tokens",0) or 0); d["total_tokens"]+=int(getattr(u,"total_tokens",0) or 0)
+def openai_text(prompt,model):
+    if not OPENAI_CLIENT: raise RuntimeError("OPENAI_API_KEY is missing in Streamlit Secrets.")
+    r=OPENAI_CLIENT.responses.create(model=model,input=prompt); record_openai_usage(r,model); return r.output_text or ""
+def openai_vision(prompt,items,model):
+    if not OPENAI_CLIENT: raise RuntimeError("OPENAI_API_KEY is missing in Streamlit Secrets.")
+    c=[{"type":"input_text","text":prompt}]
+    for i,x in enumerate(items,1):
+        c.append({"type":"input_text","text":f"\n\nSCENE {i}\nTimestamp: {x['start']:.2f}s → {x['end']:.2f}s\nTranscript: {x['text']}\n"})
+        b64=base64.b64encode(x["image"]).decode("utf-8"); c.append({"type":"input_image","image_url":f"data:image/jpeg;base64,{b64}","detail":"low"})
+    r=OPENAI_CLIENT.responses.create(model=model,input=[{"role":"user","content":c}]); record_openai_usage(r,model); return r.output_text or ""
+def ai_text(prompt,workflow,model):
+    if workflow=="Gemini Only":
+        if not GEMINI_CLIENT: raise RuntimeError("GEMINI_API_KEY is missing in Streamlit Secrets.")
+        r=generate_gemini_tracked(GEMINI_CLIENT,prompt,"gemini-3.6-flash"); return r.text if r else ""
+    return openai_text(prompt,model)
+def ai_scene(prompt,items,workflow,model):
+    if workflow in ("Gemini + OpenAI (Hybrid)","Gemini Only"):
+        if not GEMINI_CLIENT: raise RuntimeError("GEMINI_API_KEY is missing in Streamlit Secrets.")
+        c=[types.Part.from_text(text=prompt)]
+        for i,x in enumerate(items,1):
+            c.append(types.Part.from_text(text=f"\n\nSCENE {i}\nTimestamp: {x['start']:.2f}s → {x['end']:.2f}s\nTranscript: {x['text']}\n")); c.append(types.Part.from_bytes(data=x["image"],mime_type="image/jpeg"))
+        r=generate_gemini_tracked(GEMINI_CLIENT,c,"gemini-3.6-flash"); return r.text if r else ""
+    return openai_vision(prompt,items,model)
+def show_openai_usage_sidebar():
+    d=st.session_state["openai_usage"]
+    with st.sidebar:
+        st.markdown("### 🤖 OpenAI Usage"); st.metric("API Calls (this session)",d["calls"]); st.caption(f"Last model: {d['last_model']}"); st.write(f"📥 Input tokens: **{d['input_tokens']:,}**"); st.write(f"📤 Output tokens: **{d['output_tokens']:,}**"); st.write(f"🔢 Total tokens: **{d['total_tokens']:,}**")
 
 # =========================================================
-# AI USAGE MONITOR
+# GEMINI USAGE MONITOR
 # =========================================================
 
-if "ai_usage" not in st.session_state:
-
-    st.session_state["ai_usage"] = {
-
-        "Gemini": {
-            "calls": 0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "thoughts_tokens": 0,
-            "total_tokens": 0,
-            "last_model": "-"
-        },
-
-        "OpenAI": {
-            "calls": 0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "total_tokens": 0,
-            "last_model": "-"
-        }
+if "gemini_usage" not in st.session_state:
+    st.session_state["gemini_usage"] = {
+        "calls": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "thoughts_tokens": 0,
+        "total_tokens": 0,
+        "last_model": "-",
     }
 
 
-def reset_ai_usage():
+def record_gemini_usage(response, model_name):
+    """Record token usage returned by Gemini for this Streamlit session."""
 
-    st.session_state["ai_usage"] = {
+    usage = getattr(response, "usage_metadata", None)
 
-        "Gemini": {
-            "calls": 0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "thoughts_tokens": 0,
-            "total_tokens": 0,
-            "last_model": "-"
-        },
-
-        "OpenAI": {
-            "calls": 0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "last_model": "-"
-        }
-    }
-
-
-# =========================================================
-# GEMINI USAGE
-# =========================================================
-
-def record_gemini_usage(
-    response,
-    model_name
-):
-
-    usage = getattr(
-        response,
-        "usage_metadata",
-        None
-    )
-
-    data = st.session_state[
-        "ai_usage"
-    ]["Gemini"]
-
+    data = st.session_state["gemini_usage"]
     data["calls"] += 1
-
     data["last_model"] = model_name
 
     if usage is not None:
+        data['input_tokens'] += int(getattr(usage, "prompt_token_count", 0) or 0)
+        data['output_tokens'] += int(getattr(usage, "candidates_token_count", 0) or 0)
+        data['thoughts_tokens'] += int(getattr(usage, "thoughts_token_count", 0) or 0)
+        data["total_tokens"] += int(getattr(usage, "total_token_count", 0) or 0)
 
-        data["input_tokens"] += int(
-            getattr(
-                usage,
-                "prompt_token_count",
-                0
-            ) or 0
-        )
-
-        data["output_tokens"] += int(
-            getattr(
-                usage,
-                "candidates_token_count",
-                0
-            ) or 0
-        )
-
-        data["thoughts_tokens"] += int(
-            getattr(
-                usage,
-                "thoughts_token_count",
-                0
-            ) or 0
-        )
-
-        data["total_tokens"] += int(
-            getattr(
-                usage,
-                "total_token_count",
-                0
-            ) or 0
-        )
-
-
-# =========================================================
-# OPENAI USAGE
-# =========================================================
-
-def record_openai_usage(
-    response,
-    model_name
-):
-
-    usage = getattr(
-        response,
-        "usage",
-        None
-    )
-
-    data = st.session_state[
-        "ai_usage"
-    ]["OpenAI"]
-
-    data["calls"] += 1
-
-    data["last_model"] = model_name
-
-    if usage is not None:
-
-        data["input_tokens"] += int(
-            getattr(
-                usage,
-                "input_tokens",
-                0
-            ) or 0
-        )
-
-        data["output_tokens"] += int(
-            getattr(
-                usage,
-                "output_tokens",
-                0
-            ) or 0
-        )
-
-
-# =========================================================
-# GEMINI REQUEST
-# =========================================================
 
 def generate_gemini_tracked(
     client,
@@ -265,12 +142,17 @@ def generate_gemini_tracked(
     model="gemini-3.6-flash",
     max_retries=4
 ):
+    """
+    Gemini request wrapper with limited 503 retry/backoff.
+
+    503 is usually a temporary service/model availability problem,
+    so retry only 503 errors. Other errors are raised immediately.
+    A maximum of 5 total attempts is allowed (initial request + 4 retries).
+    """
 
     last_error = None
 
-    for attempt in range(
-        max_retries + 1
-    ):
+    for attempt in range(max_retries + 1):
 
         try:
 
@@ -294,516 +176,62 @@ def generate_gemini_tracked(
 
             is_503 = (
                 "503" in error_text
-                or
-                "unavailable" in error_text
-                or
-                "service unavailable" in error_text
+                or "unavailable" in error_text
+                or "service unavailable" in error_text
             )
 
-            if (
-                not is_503
-                or
-                attempt >= max_retries
-            ):
-
+            if not is_503 or attempt >= max_retries:
                 raise
 
-            wait_seconds = 2 ** (
-                attempt + 1
-            )
+            wait_seconds = 2 ** (attempt + 1)
 
             st.warning(
-                f"⚠️ Gemini service temporarily unavailable "
-                f"(503). Retry {attempt + 1}/{max_retries} "
-                f"in {wait_seconds}s..."
+                f"⚠️ Gemini service temporarily unavailable (503). "
+                f"Retry {attempt + 1}/{max_retries} in "
+                f"{wait_seconds}s..."
             )
 
-            time.sleep(
-                wait_seconds
-            )
+            time.sleep(wait_seconds)
 
     raise last_error
 
 
-# =========================================================
-# OPENAI REQUEST
-# =========================================================
+def show_gemini_usage_sidebar():
+    """Show session usage. Exact remaining Google quota/credit is not exposed by the API key."""
 
-def generate_openai_tracked(
-    client,
-    input_content,
-    model="gpt-5.6-luna",
-    max_retries=3
-):
-
-    last_error = None
-
-    for attempt in range(
-        max_retries + 1
-    ):
-
-        try:
-
-            response = client.responses.create(
-                model=model,
-                input=input_content
-            )
-
-            record_openai_usage(
-                response,
-                model
-            )
-
-            return response
-
-        except Exception as e:
-
-            last_error = e
-
-            error_text = str(e).lower()
-
-            retryable = (
-                "429" in error_text
-                or
-                "500" in error_text
-                or
-                "502" in error_text
-                or
-                "503" in error_text
-                or
-                "504" in error_text
-                or
-                "timeout" in error_text
-                or
-                "temporarily" in error_text
-            )
-
-            if (
-                not retryable
-                or
-                attempt >= max_retries
-            ):
-
-                raise
-
-            wait_seconds = 2 ** (
-                attempt + 1
-            )
-
-            st.warning(
-                f"⚠️ OpenAI temporary error. "
-                f"Retry {attempt + 1}/{max_retries} "
-                f"in {wait_seconds}s..."
-            )
-
-            time.sleep(
-                wait_seconds
-            )
-
-    raise last_error
-
-
-# =========================================================
-# GENERIC AI TEXT RESPONSE
-# =========================================================
-
-def get_ai_text(
-    response
-):
-
-    if response is None:
-
-        return ""
-
-    text_value = getattr(
-        response,
-        "text",
-        None
-    )
-
-    if text_value:
-
-        return str(
-            text_value
-        ).strip()
-
-    output_text = getattr(
-        response,
-        "output_text",
-        None
-    )
-
-    if output_text:
-
-        return str(
-            output_text
-        ).strip()
-
-    return ""
-
-
-# =========================================================
-# GENERIC TEXT AI CALL
-# =========================================================
-
-def generate_ai_text(
-    prompt
-):
-
-    provider = st.session_state.get(
-        "ai_provider",
-        "Gemini"
-    )
-
-    model = (
-        st.session_state.get(
-            "main_gemini_model",
-            "gemini-3.6-flash"
-        )
-        if provider == "Gemini"
-        else
-        st.session_state.get(
-            "main_openai_model",
-            "gpt-5.6-luna"
-        )
-    )
-
-    if provider == "Gemini":
-
-        if "GEMINI_API_KEY" not in st.secrets:
-
-            raise RuntimeError(
-                "GEMINI_API_KEY is missing from Streamlit Secrets."
-            )
-
-        api_key = st.secrets[
-            "GEMINI_API_KEY"
-        ]
-
-        client = genai.Client(
-            api_key=api_key
-        )
-
-        response = generate_gemini_tracked(
-            client,
-            prompt,
-            model
-        )
-
-        return get_ai_text(
-            response
-        )
-
-    else:
-
-        if "OPENAI_API_KEY" not in st.secrets:
-
-            raise RuntimeError(
-                "OPENAI_API_KEY is missing from Streamlit Secrets."
-            )
-
-        api_key = st.secrets[
-            "OPENAI_API_KEY"
-        ]
-
-        client = OpenAI(
-            api_key=api_key
-        )
-
-        input_content = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": prompt
-                    }
-                ]
-            }
-        ]
-
-        response = generate_openai_tracked(
-            client,
-            input_content,
-            model
-        )
-
-        return get_ai_text(
-            response
-        )
-
-
-# =========================================================
-# AI SCENE ANALYSIS
-# =========================================================
-
-def generate_scene_analysis(
-    scene_items,
-    prompt
-):
-
-    provider = st.session_state.get(
-        "ai_provider",
-        "Gemini"
-    )
-
-    model = (
-        st.session_state.get(
-            "main_gemini_model",
-            "gemini-3.6-flash"
-        )
-        if provider == "Gemini"
-        else
-        st.session_state.get(
-            "main_openai_model",
-            "gpt-5.6-luna"
-        )
-    )
-
-    if provider == "Gemini":
-
-        if "GEMINI_API_KEY" not in st.secrets:
-
-            raise RuntimeError(
-                "GEMINI_API_KEY is missing from Streamlit Secrets."
-            )
-
-        client = genai.Client(
-            api_key=st.secrets[
-                "GEMINI_API_KEY"
-            ]
-        )
-
-        contents = []
-
-        contents.append(
-            types.Part.from_text(
-                text=prompt
-            )
-        )
-
-        for index, item in enumerate(
-            scene_items,
-            start=1
-        ):
-
-            label = (
-                f"\n\n"
-                f"SCENE {index}\n"
-                f"Timestamp: "
-                f"{item['start']:.2f}s → "
-                f"{item['end']:.2f}s\n"
-                f"Transcript: "
-                f"{item['text']}\n"
-            )
-
-            contents.append(
-                types.Part.from_text(
-                    text=label
-                )
-            )
-
-            contents.append(
-                types.Part.from_bytes(
-                    data=item["image"],
-                    mime_type="image/jpeg"
-                )
-            )
-
-        response = generate_gemini_tracked(
-            client,
-            contents,
-            model
-        )
-
-        return get_ai_text(
-            response
-        )
-
-    else:
-
-        if "OPENAI_API_KEY" not in st.secrets:
-
-            raise RuntimeError(
-                "OPENAI_API_KEY is missing from Streamlit Secrets."
-            )
-
-        client = OpenAI(
-            api_key=st.secrets[
-                "OPENAI_API_KEY"
-            ]
-        )
-
-        content = [
-            {
-                "type": "input_text",
-                "text": prompt
-            }
-        ]
-
-        for index, item in enumerate(
-            scene_items,
-            start=1
-        ):
-
-            label = (
-                f"\n\n"
-                f"SCENE {index}\n"
-                f"Timestamp: "
-                f"{item['start']:.2f}s → "
-                f"{item['end']:.2f}s\n"
-                f"Transcript: "
-                f"{item['text']}\n"
-            )
-
-            content.append(
-                {
-                    "type": "input_text",
-                    "text": label
-                }
-            )
-
-            image_base64 = base64.b64encode(
-                item["image"]
-            ).decode(
-                "ascii"
-            )
-
-            image_url = (
-                "data:image/jpeg;base64,"
-                + image_base64
-            )
-
-            content.append(
-                {
-                    "type": "input_image",
-                    "image_url": image_url
-                }
-            )
-
-        input_content = [
-            {
-                "role": "user",
-                "content": content
-            }
-        ]
-
-        response = generate_openai_tracked(
-            client,
-            input_content,
-            model
-        )
-
-        return get_ai_text(
-            response
-        )
-
-
-# =========================================================
-# AI USAGE SIDEBAR
-# =========================================================
-
-def show_ai_usage_sidebar():
-
-    usage = st.session_state[
-        "ai_usage"
-    ]
-
-    provider = st.session_state.get(
-        "ai_provider",
-        "Gemini"
-    )
-
-    data = usage[
-        provider
-    ]
+    data = st.session_state["gemini_usage"]
 
     with st.sidebar:
+        st.markdown("### 🧠 Gemini Usage")
+        st.metric("API Calls (this session)", data["calls"])
+        st.caption(f"Last model: {data['last_model']}")
+        st.write(f"📥 Input tokens: **{data['input_tokens']:,}**")
+        st.write(f"📤 Output tokens: **{data['output_tokens']:,}**")
+        st.write(f"🧠 Thinking tokens: **{data['thoughts_tokens']:,}**")
+        st.write(f"🔢 Total tokens: **{data['total_tokens']:,}**")
 
-        st.markdown(
-            "### 🧠 AI Usage"
+        # Gemini 3.6 Flash Standard pricing currently published by Google:
+        # $0.75 / 1M input tokens and $3.75 / 1M output tokens through
+        # December 31, 2026. This is only an ESTIMATE; Google billing
+        # balance itself is not exposed by the Gemini API response.
+        estimated_cost = (
+            (data['input_tokens'] / 1_000_000) * 0.75
+            + (data['output_tokens'] / 1_000_000) * 3.75
         )
 
-        st.write(
-            f"Provider: **{provider}**"
-        )
-
-        st.metric(
-            "API Calls",
-            data["calls"]
-        )
-
-        st.caption(
-            f"Last model: {data['last_model']}"
-        )
-
-        st.write(
-            f"📥 Input tokens: **{data['input_tokens']:,}**"
-        )
-
-        st.write(
-            f"📤 Output tokens: **{data['output_tokens']:,}**"
-        )
-
-        if provider == "Gemini":
-
-            st.write(
-                f"🧠 Thinking tokens: "
-                f"**{data['thoughts_tokens']:,}**"
-            )
-
-            st.write(
-                f"🔢 Total tokens: "
-                f"**{data['total_tokens']:,}**"
-            )
-
-            estimated_cost = (
-                (
-                    data["input_tokens"]
-                    / 1_000_000
-                )
-                * 0.75
-                +
-                (
-                    data["output_tokens"]
-                    / 1_000_000
-                )
-                * 3.75
-            )
-
-        else:
-
-            estimated_cost = (
-                (
-                    data["input_tokens"]
-                    / 1_000_000
-                )
-                * 0.20
-                +
-                (
-                    data["output_tokens"]
-                    / 1_000_000
-                )
-                * 1.20
-            )
-
-        st.write(
-            f"💵 Estimated API cost: "
-            f"**${estimated_cost:.4f}**"
-        )
+        st.write(f"💵 Estimated API cost: **${estimated_cost:.4f}**")
 
         starting_credit = st.number_input(
             "💳 Starting Credit (USD)",
             min_value=0.0,
             value=5.0,
             step=1.0,
-            key="ai_starting_credit"
+            key="gemini_starting_credit"
         )
 
         estimated_remaining = max(
             0.0,
-            float(starting_credit)
-            - estimated_cost
+            float(starting_credit) - estimated_cost
         )
 
         st.metric(
@@ -812,30 +240,37 @@ def show_ai_usage_sidebar():
         )
 
         st.caption(
-            "⚠️ Estimated API usage only. "
-            "It is not the actual billing balance."
+            "⚠️ This is an estimated balance from token usage, not Google's "
+            "actual billing balance. Free-tier quota remaining is not exposed "
+            "directly through the Gemini API response."
         )
 
-        if st.button(
-            "🔄 Reset AI Usage Counter",
-            use_container_width=True
-        ):
+        st.markdown(
+            "[📊 Open Google AI Studio Usage](https://aistudio.google.com/)"
+        )
 
-            reset_ai_usage()
-
+        if st.button("🔄 Reset Usage Counter", use_container_width=True):
+            st.session_state["gemini_usage"] = {
+                "calls": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "thoughts_tokens": 0,
+                "total_tokens": 0,
+                "last_model": "-",
+            }
             st.rerun()
 
+        st.markdown(
+            "[📊 Open Google AI Studio Usage](https://aistudio.google.com/)"
+        )
 
-show_ai_usage_sidebar()
+
+show_gemini_usage_sidebar()
+show_openai_usage_sidebar()
 
 
-# =========================================================
-# HELPER FUNCTIONS
-# =========================================================
-
-def get_audio_duration(
-    media_file
-):
+def get_audio_duration(media_file):
+    """Read exact media duration using ffprobe."""
 
     try:
 
@@ -858,7 +293,6 @@ def get_audio_duration(
         value = result.stdout.strip()
 
         if not value:
-
             return 0.0
 
         return float(value)
@@ -868,27 +302,22 @@ def get_audio_duration(
         return 0.0
 
 
-def extract_audio_for_whisper(
-    video_path
-):
+def extract_audio_for_whisper(video_path):
+    """
+    Extract clean mono 16 kHz WAV for Faster-Whisper.
+    """
 
     audio_file = os.path.join(
         tempfile.gettempdir(),
         f"movie_recap_whisper_{os.getpid()}.wav"
     )
 
-    if os.path.exists(
-        audio_file
-    ):
+    if os.path.exists(audio_file):
 
         try:
-
-            os.remove(
-                audio_file
-            )
+            os.remove(audio_file)
 
         except Exception:
-
             pass
 
     result = subprocess.run(
@@ -917,9 +346,7 @@ def extract_audio_for_whisper(
             + result.stderr[-3000:]
         )
 
-    if not os.path.exists(
-        audio_file
-    ):
+    if not os.path.exists(audio_file):
 
         raise RuntimeError(
             "Audio file was not created."
@@ -948,9 +375,8 @@ def extract_audio_for_whisper(
     return audio_file
 
 
-def ass_time(
-    seconds
-):
+def ass_time(seconds):
+    """Convert seconds to ASS timestamp."""
 
     seconds = max(
         0,
@@ -985,10 +411,12 @@ def split_myanmar_text(
     text,
     max_chars=65
 ):
+    """
+    Split Myanmar narration into TTS/subtitle chunks.
+    Sentence boundaries are preferred.
+    """
 
-    text = str(
-        text
-    ).strip()
+    text = str(text).strip()
 
     text = re.sub(
         r"\s+",
@@ -997,7 +425,6 @@ def split_myanmar_text(
     )
 
     if not text:
-
         return []
 
     sentences = re.split(
@@ -1032,8 +459,7 @@ def split_myanmar_text(
             candidate = (
                 word
                 if not current
-                else
-                current + " " + word
+                else current + " " + word
             )
 
             if len(candidate) <= max_chars:
@@ -1063,6 +489,7 @@ def wrap_myanmar(
     text,
     max_chars=24
 ):
+    """Wrap subtitle into a maximum of 2 ASS lines without dropping text."""
 
     text = re.sub(
         r"\s+",
@@ -1071,7 +498,6 @@ def wrap_myanmar(
     )
 
     if not text:
-
         return ""
 
     words = text.split()
@@ -1085,8 +511,7 @@ def wrap_myanmar(
         candidate = (
             word
             if not current
-            else
-            current + " " + word
+            else current + " " + word
         )
 
         if (
@@ -1106,9 +531,7 @@ def wrap_myanmar(
 
         else:
 
-            current += (
-                " " + word
-            )
+            current += " " + word
 
     if current:
 
@@ -1128,17 +551,26 @@ def wrap_myanmar(
     )
 
 
-def clean_post_caption(
-    text
-):
+# =========================================================
+# POST CAPTION CLEANER
+# =========================================================
+
+def clean_post_caption(text):
+    """
+    Clean Gemini generated social-media caption.
+
+    Maximum 3 non-empty lines.
+    Removes accidental labels such as:
+    Caption:
+    Post Caption:
+    Title:
+    """
 
     if not text:
 
         return ""
 
-    text = str(
-        text
-    ).replace(
+    text = str(text).replace(
         "\r\n",
         "\n"
     ).replace(
@@ -1146,6 +578,7 @@ def clean_post_caption(
         "\n"
     ).strip()
 
+    # Remove markdown code fences
     text = re.sub(
         r"^```(?:text|caption|markdown)?\s*",
         "",
@@ -1159,14 +592,15 @@ def clean_post_caption(
         text
     )
 
+    # Remove common accidental labels
     text = re.sub(
-        r"^\s*(?:caption|post\s*caption|title)"
-        r"\s*[:：-]\s*",
+        r"^\s*(?:caption|post\s*caption|title)\s*[:：-]\s*",
         "",
         text,
         flags=re.IGNORECASE
     )
 
+    # Remove surrounding quotation marks
     text = text.strip()
 
     if (
@@ -1177,11 +611,10 @@ def clean_post_caption(
 
         text = text[1:-1].strip()
 
+    # Keep only non-empty lines
     lines = []
 
-    for line in text.split(
-        "\n"
-    ):
+    for line in text.split("\n"):
 
         line = re.sub(
             r"\s+",
@@ -1190,9 +623,9 @@ def clean_post_caption(
         ).strip()
 
         if not line:
-
             continue
 
+        # Remove accidental numbered-list prefix
         line = re.sub(
             r"^\s*\d+[\.\)]\s*",
             "",
@@ -1206,17 +639,17 @@ def clean_post_caption(
         )
 
         if line:
+            lines.append(line)
 
-            lines.append(
-                line
-            )
-
+    # Maximum 3 lines
     lines = lines[:3]
 
-    return "\n".join(
-        lines
-    ).strip()
+    return "\n".join(lines).strip()
 
+
+# =========================================================
+# CACHED BLUR VIDEO DATA URL
+# =========================================================
 
 @st.cache_data(
     max_entries=2,
@@ -1226,6 +659,13 @@ def make_video_data_url(
     video_bytes,
     mime_type
 ):
+    """
+    Convert uploaded video to a browser data URL.
+
+    Cached so Streamlit does not repeatedly perform
+    Base64 encoding when the page reruns because the
+    user moves/resizes the blur box.
+    """
 
     encoded = base64.b64encode(
         video_bytes
@@ -1239,10 +679,17 @@ def make_video_data_url(
     )
 
 
+# =========================================================
+# VIDEO FRAME HELPER
+# =========================================================
+
 def extract_frame_bytes(
     cap,
     timestamp
 ):
+    """
+    Extract one actual frame from video.
+    """
 
     try:
 
@@ -1310,6 +757,10 @@ def extract_frame_bytes(
 
         return None
 
+
+# =========================================================
+# CACHED FASTER-WHISPER MODEL
+# =========================================================
 
 @st.cache_resource
 def load_whisper_model(
@@ -1498,6 +949,13 @@ st.subheader(
     "⚙️ Recap Settings"
 )
 
+ai_col1, ai_col2 = st.columns(2)
+with ai_col1:
+    ai_workflow=st.selectbox("🤖 AI Workflow",["Gemini + OpenAI (Hybrid)","Gemini Only","OpenAI Only"],index=0,key="main_ai_workflow")
+with ai_col2:
+    openai_model=st.selectbox("🤖 OpenAI Model",OPENAI_MODELS,index=0,key="main_openai_model")
+st.caption(("✅" if GEMINI_API_KEY else "❌")+" Gemini API Key  |  "+("✅" if OPENAI_API_KEY else "❌")+" OpenAI API Key")
+
 settings_col1, settings_col2 = st.columns(2)
 
 
@@ -1523,7 +981,6 @@ with settings_col1:
             "👩 Female — Nilar",
             "👨 Male — Thiha"
         ],
-        index=1,
         key="main_voice_gender"
     )
 
@@ -1534,7 +991,7 @@ with settings_col1:
             1.1,
             1.2
         ],
-        index=2,
+        index=0,
         key="main_voice_speed"
     )
 
@@ -1712,6 +1169,10 @@ if blur_enabled:
 
     else:
 
+        # -------------------------------------------------
+        # ACTUAL UPLOADED VIDEO
+        # -------------------------------------------------
+
         video_bytes_for_preview = (
             st.session_state[
                 "uploaded_file"
@@ -1735,10 +1196,18 @@ if blur_enabled:
             uploaded_file.type or "video/mp4"
         )
 
+        # -------------------------------------------------
+        # Cached data URL
+        # -------------------------------------------------
+
         video_data_url = make_video_data_url(
             video_bytes_for_preview,
             mime_type
         )
+
+        # -------------------------------------------------
+        # CURRENT BLUR VALUES
+        # -------------------------------------------------
 
         current_blur_x = float(
             st.session_state.get(
@@ -1768,14 +1237,25 @@ if blur_enabled:
             )
         )
 
+        # -------------------------------------------------
+        # INTERACTIVE VIDEO EDITOR
+        # -------------------------------------------------
+
         blur_result = BLUR_VIDEO_EDITOR(
             video_src=video_data_url,
+
             initial_x=current_blur_x,
             initial_y=current_blur_y,
+
             initial_width=current_blur_width,
             initial_height=current_blur_height,
+
             key="blur_video_editor"
         )
+
+        # -------------------------------------------------
+        # RECEIVE BOX POSITION
+        # -------------------------------------------------
 
         if isinstance(
             blur_result,
@@ -1811,6 +1291,10 @@ if blur_enabled:
                         current_blur_height
                     )
                 )
+
+                # -------------------------------------------------
+                # SAFETY CLAMP
+                # -------------------------------------------------
 
                 new_width = max(
                     1.0,
@@ -1864,6 +1348,11 @@ if blur_enabled:
 
                 pass
 
+
+    # ---------------------------------------------------------
+    # BLUR STRENGTH
+    # ---------------------------------------------------------
+
     blur_strength = st.slider(
         "💪 Blur Strength",
         min_value=1,
@@ -1872,6 +1361,11 @@ if blur_enabled:
         step=1,
         key="main_blur_strength"
     )
+
+
+    # ---------------------------------------------------------
+    # USE INTERACTIVE VALUES
+    # ---------------------------------------------------------
 
     blur_x = float(
         st.session_state.get(
@@ -1901,15 +1395,25 @@ if blur_enabled:
         )
     )
 
+
     st.success(
         "✅ Blur Box position saved."
     )
 
     st.caption(
-        f"X: {blur_x:.1f}% | "
-        f"Y: {blur_y:.1f}% | "
-        f"W: {blur_width:.1f}% | "
+        f"X: {blur_x:.1f}%  |  "
+        f"Y: {blur_y:.1f}%  |  "
+        f"W: {blur_width:.1f}%  |  "
         f"H: {blur_height:.1f}%"
+    )
+
+    st.info(
+        f"🔲 Selected Blur Area: "
+        f"X {blur_x:.1f}% | "
+        f"Y {blur_y:.1f}% | "
+        f"W {blur_width:.1f}% | "
+        f"H {blur_height:.1f}% | "
+        f"Strength {blur_strength}"
     )
 
 else:
@@ -1948,7 +1452,7 @@ if uploaded_file is not None:
     if run_all:
 
         st.success(
-            f"🚀 One Click Recap started using {AI_PROVIDER}!"
+            "🚀 One Click Recap started!"
         )
 
 st.divider()
@@ -2013,12 +1517,11 @@ if uploaded_file is not None:
 
             for segment in segments_generator:
 
-                text_value = str(
+                text = str(
                     segment.text
                 ).strip()
 
-                if not text_value:
-
+                if not text:
                     continue
 
                 transcript_segments.append(
@@ -2029,7 +1532,7 @@ if uploaded_file is not None:
                         "end": float(
                             segment.end
                         ),
-                        "text": text_value
+                        "text": text
                     }
                 )
 
@@ -2122,7 +1625,6 @@ if "transcript_result" in st.session_state:
         else:
 
             try:
-
                 video_path = (
                     st.session_state[
                         "video_path"
@@ -2209,15 +1711,14 @@ if "transcript_result" in st.session_state:
                             )
                         )
 
-                        text_value = str(
+                        text = str(
                             seg.get(
                                 "text",
                                 ""
                             )
                         ).strip()
 
-                        if not text_value:
-
+                        if not text:
                             continue
 
                         timestamp = (
@@ -2232,7 +1733,6 @@ if "transcript_result" in st.session_state:
                         )
 
                         if frame_bytes is None:
-
                             continue
 
                         scene_items.append(
@@ -2240,7 +1740,7 @@ if "transcript_result" in st.session_state:
                                 "start": start,
                                 "end": end,
                                 "timestamp": timestamp,
-                                "text": text_value,
+                                "text": text,
                                 "image": frame_bytes
                             }
                         )
@@ -2288,7 +1788,7 @@ Rules:
 - Do not move dialogue between timestamps.
 - Do not write a long explanation.
 - Do not repeat the same information.
-- Do not add Summary, Characters, Emotion, Analysis
+- Do not add "Summary", "Characters", "Emotion", "Analysis"
   or other extra sections.
 - If the frame does not clearly show something, do not guess it.
 - If the transcript says something that is not visually confirmed,
@@ -2297,11 +1797,11 @@ Rules:
 - The purpose is to make the later recap match the actual video.
 """
 
-                        scene_analysis = (
-                            generate_scene_analysis(
-                                scene_items,
-                                prompt
-                            )
+                        scene_analysis = ai_scene(
+                            prompt,
+                            scene_items,
+                            ai_workflow,
+                            openai_model
                         )
 
                         if scene_analysis:
@@ -2317,15 +1817,13 @@ Rules:
                             )
 
                             st.success(
-                                f"✅ Scene Analysis completed "
-                                f"using {AI_PROVIDER}."
+                                "✅ Scene Analysis completed."
                             )
 
                         else:
 
                             st.error(
-                                f"❌ {AI_PROVIDER} returned "
-                                "no scene analysis."
+                                "❌ Gemini returned no scene analysis."
                             )
 
             except Exception as e:
@@ -2365,7 +1863,6 @@ if "ai_scene_analysis" in st.session_state:
     ) or run_all:
 
         try:
-
             scene_analysis = (
                 st.session_state[
                     "ai_scene_analysis"
@@ -2405,15 +1902,16 @@ Scene Analysis:
 {scene_analysis}
 """
 
-            recap_text = generate_ai_text(
-                prompt
+            recap_text = ai_text(
+                prompt,
+                ai_workflow,
+                openai_model
             )
 
-            if not recap_text:
+            if not recap_text.strip():
 
                 raise RuntimeError(
-                    f"{AI_PROVIDER} returned an empty "
-                    "recap script."
+                    "Gemini returned an empty recap script."
                 )
 
             st.session_state[
@@ -2421,8 +1919,7 @@ Scene Analysis:
             ] = recap_text
 
             st.success(
-                f"✅ Movie Recap Script generated "
-                f"using {AI_PROVIDER}!"
+                "✅ Movie Recap Script generated!"
             )
 
         except Exception as e:
@@ -2462,7 +1959,6 @@ if "recap_script" in st.session_state:
     ) or run_all:
 
         try:
-
             recap_script = (
                 st.session_state[
                     "recap_script"
@@ -2491,15 +1987,16 @@ English Recap:
 {recap_script}
 """
 
-            myanmar_text = generate_ai_text(
-                prompt
+            myanmar_text = ai_text(
+                prompt,
+                ai_workflow,
+                openai_model
             )
 
-            if not myanmar_text:
+            if not myanmar_text.strip():
 
                 raise RuntimeError(
-                    f"{AI_PROVIDER} returned an empty "
-                    "Myanmar recap."
+                    "Gemini returned an empty Myanmar recap."
                 )
 
             st.session_state[
@@ -2507,8 +2004,7 @@ English Recap:
             ] = myanmar_text
 
             st.success(
-                f"✅ Myanmar Recap Script generated "
-                f"using {AI_PROVIDER}!"
+                "✅ Myanmar Recap Script generated!"
             )
 
         except Exception as e:
@@ -2554,7 +2050,6 @@ if "ai_scene_analysis" in st.session_state:
     ):
 
         try:
-
             scene_analysis_for_caption = (
                 st.session_state.get(
                     "ai_scene_analysis",
@@ -2640,8 +2135,10 @@ Myanmar Recap:
 {myanmar_for_caption}
 """
 
-            raw_caption = generate_ai_text(
-                caption_prompt
+            raw_caption = ai_text(
+                caption_prompt,
+                ai_workflow,
+                openai_model
             )
 
             post_caption = clean_post_caption(
@@ -2651,8 +2148,7 @@ Myanmar Recap:
             if not post_caption:
 
                 raise RuntimeError(
-                    f"{AI_PROVIDER} returned an empty "
-                    "post caption."
+                    "Gemini returned an empty post caption."
                 )
 
             st.session_state[
@@ -2660,8 +2156,7 @@ Myanmar Recap:
             ] = post_caption
 
             st.success(
-                f"✅ Post Caption generated "
-                f"using {AI_PROVIDER}!"
+                "✅ Post Caption generated!"
             )
 
         except Exception as e:
@@ -2709,9 +2204,7 @@ st.subheader(
 
 if "myanmar_recap" in st.session_state:
 
-    if voice_gender.startswith(
-        "👩"
-    ):
+    if voice_gender.startswith("👩"):
 
         selected_voice = (
             "my-MM-NilarNeural"
@@ -2723,15 +2216,11 @@ if "myanmar_recap" in st.session_state:
             "my-MM-ThihaNeural"
         )
 
-    if float(
-        voice_speed
-    ) == 1.0:
+    if float(voice_speed) == 1.0:
 
         tts_rate = "+0%"
 
-    elif float(
-        voice_speed
-    ) == 1.1:
+    elif float(voice_speed) == 1.1:
 
         tts_rate = "+10%"
 
@@ -2753,13 +2242,13 @@ if "myanmar_recap" in st.session_state:
 
             import edge_tts
 
-            text_value = (
+            text = (
                 st.session_state[
                     "myanmar_recap"
                 ]
             ).strip()
 
-            if not text_value:
+            if not text:
 
                 st.error(
                     "❌ Myanmar recap is empty."
@@ -2768,7 +2257,7 @@ if "myanmar_recap" in st.session_state:
                 st.stop()
 
             chunks = split_myanmar_text(
-                text_value,
+                text,
                 max_chars=100
             )
 
@@ -2896,9 +2385,7 @@ if "myanmar_recap" in st.session_state:
                 "combined.wav"
             )
 
-            if len(
-                normalized_files
-            ) == 1:
+            if len(normalized_files) == 1:
 
                 shutil.copyfile(
                     normalized_files[0],
@@ -2920,7 +2407,9 @@ if "myanmar_recap" in st.session_state:
 
                 filter_parts = []
 
-                previous_label = "[0:a]"
+                previous_label = (
+                    "[0:a]"
+                )
 
                 for i in range(
                     1,
@@ -3236,7 +2725,7 @@ if "subtitle_data" in st.session_state:
             item["end"]
         )
 
-        text_value = str(
+        text = str(
             item["text"]
         ).strip()
 
@@ -3290,7 +2779,7 @@ if "subtitle_data" in st.session_state:
             f"{i}\n"
             f"{start_time} --> "
             f"{end_time}\n"
-            f"{text_value}\n"
+            f"{text}\n"
         )
 
     srt_content = "\n".join(
@@ -3381,12 +2870,11 @@ if "subtitle_data" in st.session_state:
             item["end"]
         )
 
-        text_value = str(
+        text = str(
             item["text"]
         ).strip()
 
-        if not text_value:
-
+        if not text:
             continue
 
         if subtitle_duration > 0:
@@ -3408,7 +2896,7 @@ if "subtitle_data" in st.session_state:
             {
                 "start": start,
                 "end": end,
-                "text": text_value
+                "text": text
             }
         )
 
@@ -3437,10 +2925,12 @@ st.subheader(
     "🧊 Freeze Frame + Zoom"
 )
 
+
 st.write(
     f"Status: "
     f"{'ON' if freeze_enabled else 'OFF'}"
 )
+
 
 if freeze_enabled:
 
@@ -3486,6 +2976,10 @@ if (
 
         try:
 
+            # =================================================
+            # SAVE ORIGINAL VIDEO
+            # =================================================
+
             original_video = os.path.join(
                 tempfile.gettempdir(),
                 "movie_recap_original.mp4"
@@ -3508,9 +3002,17 @@ if (
                 ]
             )
 
+            # =================================================
+            # VIDEO DURATION
+            # =================================================
+
             video_duration = get_audio_duration(
                 original_video
             )
+
+            # =================================================
+            # VOICEOVER DURATION
+            # =================================================
 
             voice_duration = get_audio_duration(
                 voice_file
@@ -3524,6 +3026,10 @@ if (
                 f"🎙️ Voiceover: "
                 f"{voice_duration:.2f} sec"
             )
+
+            # =================================================
+            # FREEZE SETTINGS
+            # =================================================
 
             if freeze_enabled:
 
@@ -3542,6 +3048,10 @@ if (
                 )
 
                 freeze_time = 0
+
+            # =================================================
+            # OUTPUT DIMENSIONS
+            # =================================================
 
             original_width = int(
                 st.session_state.get(
@@ -3648,6 +3158,10 @@ if (
                 )
             )
 
+            # =================================================
+            # ASS SUBTITLES
+            # =================================================
+
             ass_content = (
                 "[Script Info]\n"
                 "ScriptType: v4.00+\n"
@@ -3699,17 +3213,17 @@ if (
                     )
                 )
 
-                text_value = wrap_myanmar(
+                text = wrap_myanmar(
                     item["text"],
                     subtitle_wrap_chars
                 )
 
-                text_value = text_value.replace(
+                text = text.replace(
                     "{",
                     "\\{"
                 )
 
-                text_value = text_value.replace(
+                text = text.replace(
                     "}",
                     "\\}"
                 )
@@ -3719,7 +3233,7 @@ if (
                     f"{ass_time(new_start)},"
                     f"{ass_time(new_end)},"
                     f"Myanmar,,0,0,0,,"
-                    f"{text_value}\n"
+                    f"{text}\n"
                 )
 
             ass_file = os.path.join(
@@ -3858,6 +3372,10 @@ if (
 
             labels = []
 
+            # -------------------------------------------------
+            # BLUR HELPER
+            # -------------------------------------------------
+
             def make_blur_filter(
                 input_label,
                 output_label
@@ -3925,6 +3443,10 @@ if (
                     + output_label
                 )
 
+            # -------------------------------------------------
+            # BUILD NORMAL + FREEZE SEGMENTS
+            # -------------------------------------------------
+
             if freeze_enabled:
 
                 segment_count = int(
@@ -3955,6 +3477,10 @@ if (
                         f"[normal_scaled{i}]"
                     )
 
+                    # -----------------------------------------
+                    # NORMAL SEGMENT
+                    # -----------------------------------------
+
                     filter_parts.append(
                         f"[0:v]"
                         f"trim="
@@ -3976,6 +3502,10 @@ if (
                     labels.append(
                         normal_label
                     )
+
+                    # -----------------------------------------
+                    # FREEZE + ZOOM
+                    # -----------------------------------------
 
                     if end < video_duration:
 
@@ -4034,6 +3564,10 @@ if (
                                 f")"
                             )
 
+                        # -----------------------------------------
+                        # ONE ACTUAL FRAME
+                        # -----------------------------------------
+
                         filter_parts.append(
                             f"[0:v]"
                             f"trim="
@@ -4047,6 +3581,10 @@ if (
                             f"setsar=1"
                             f"{freeze_source_label}"
                         )
+
+                        # -----------------------------------------
+                        # BLUR BEFORE ZOOM
+                        # -----------------------------------------
 
                         freeze_blur_label = (
                             f"[freeze_blur{i}]"
@@ -4093,6 +3631,10 @@ if (
                                 freeze_source_label
                                 + freeze_blur_label
                             )
+
+                        # -----------------------------------------
+                        # ZOOM
+                        # -----------------------------------------
 
                         filter_parts.append(
                             freeze_blur_label
@@ -4159,9 +3701,11 @@ if (
                         f"{blur_x_px}:"
                         f"{blur_y_px},"
                         f"boxblur="
-                        f"luma_radius={blur_strength_value}:"
+                        f"luma_radius="
+                        f"{blur_strength_value}:"
                         f"luma_power=2:"
-                        f"chroma_radius={blur_strength_value}:"
+                        f"chroma_radius="
+                        f"{blur_strength_value}:"
                         f"chroma_power=2"
                         "[blurredarea_single]"
                     )
@@ -4187,6 +3731,10 @@ if (
                         "[basevideo]"
                     )
 
+            # =================================================
+            # SUBTITLE OVERLAY
+            # =================================================
+
             ass_filter = (
                 f"ass={ass_file}"
             )
@@ -4202,6 +3750,10 @@ if (
                 + ass_filter
                 + "[vout]"
             )
+
+            # =================================================
+            # DURATION CALCULATION
+            # =================================================
 
             if freeze_enabled:
 
@@ -4239,6 +3791,10 @@ if (
                 f"{extra_duration:.2f} sec"
             )
 
+            # =================================================
+            # EXTEND FINAL FRAME
+            # =================================================
+
             if extra_duration > 0:
 
                 filter_parts.append(
@@ -4262,9 +3818,17 @@ if (
                     "[vout]"
                 )
 
+            # =================================================
+            # FILTER COMPLEX
+            # =================================================
+
             filter_complex = ";".join(
                 filter_parts
             )
+
+            # =================================================
+            # OUTPUT
+            # =================================================
 
             output_video = os.path.join(
                 tempfile.gettempdir(),
@@ -4300,6 +3864,10 @@ if (
                 f"{voice_duration:.3f}",
                 output_video
             ]
+
+            # =================================================
+            # EXPORT
+            # =================================================
 
             st.info(
                 "⏳ Creating final video..."
