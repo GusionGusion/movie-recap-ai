@@ -1855,8 +1855,8 @@ if "ai_scene_analysis" in st.session_state:
                     "ai_scene_analysis"
                 ]
             )
-
-                        if recap_mode == "🎬 Movie Recap":
+            
+            if recap_mode == "🎬 Movie Recap":
                 prompt = f"""
 You are a professional movie recap script writer.
 
