@@ -1698,9 +1698,8 @@ if "transcript_result" in st.session_state:
                         )
 
                     else:
-
-                         if recap_mode == "🎬 Movie Recap":
-                        prompt = """
+                                if recap_mode == "🎬 Movie Recap":
+            prompt = """
 You are analyzing an actual movie/video.
 
 For every supplied timestamp:
@@ -1730,19 +1729,15 @@ Rules:
 - Keep the exact chronological order.
 - Keep each scene attached to its supplied timestamp.
 - Do not move dialogue between timestamps.
-- Do not write a long explanation.
 - Do not repeat the same information.
-- Do not add Summary, Characters, Emotion, Analysis
-  or other extra sections.
 - If the frame does not clearly show something, do not guess it.
-- If the transcript says something that is not visually confirmed,
-  keep it only in Dialogue.
+- If transcript information is not visually confirmed, keep it only in Dialogue.
+- Do not add extra sections.
 - Keep the output short and natural.
-- The purpose is to make the later movie recap match the actual video.
 """
 
-else:
-    prompt = """
+        else:
+            prompt = """
 You are analyzing an actual animal or wildlife documentary video.
 
 For every supplied timestamp:
@@ -1765,27 +1760,21 @@ Dialogue: ...
 Rules:
 
 - Describe ONLY what is actually visible in the supplied frame.
-- Identify the animal only when its appearance clearly supports it.
-- Describe visible animal behavior, movement, posture, environment,
-  feeding, hunting, defense, interaction or other visible actions.
+- Identify the animal only when clearly visible.
+- Describe only visible animal behavior and actions.
 - Do NOT invent animal behavior.
 - Do NOT invent biological facts.
 - Do NOT invent abilities, strengths or weaknesses.
-- Do NOT guess the animal species when the frame is unclear.
-- If something is not clearly visible, do not guess it.
-- Use the transcript only for spoken information.
-- If the transcript contains information that is not visually confirmed,
-  keep it only in Dialogue.
+- Do NOT guess the species when unclear.
 - Keep the exact chronological order.
 - Keep each scene attached to its supplied timestamp.
 - Do not move dialogue between timestamps.
 - Do not repeat the same information.
-- Do not add Summary, Characters, Emotion, Analysis,
-  Animal Facts or other extra sections.
+- Do not add extra sections.
 - Keep the output short and natural.
-- The purpose is to make the later animal documentary recap
-  match the actual video.
 """
+
+
 
                         scene_analysis = ai_scene(
                             prompt,
