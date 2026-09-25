@@ -1,6 +1,7 @@
 streamlit
 google-genai
-opencv-python-headless
+openai
 faster-whisper
 edge-tts
-openai
+opencv-python-headless
+numpy
