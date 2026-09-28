@@ -69,7 +69,7 @@ st.write(
 # All text/vision AI requests are routed through ai.py.
 # Video processing, Whisper, TTS, subtitles, blur, and FFmpeg remain unchanged.
 
-from ai import generate_text, generate_vision
+from ai import generate_text, generate_vision, ai_text
 
 # API key status is read here only for the existing UI indicator.
 # Actual AI requests are handled by ai.py.
