@@ -263,7 +263,34 @@ def gemini_text(
         f"{max_retries} attempts: "
         f"{last_error}"
     )
+    
+# =========================================================
+# BACKWARD COMPATIBILITY
+# =========================================================
 
+def ai_text(
+    prompt: str,
+    workflow: str = "Gemini",
+    model: Optional[str] = None,
+) -> str:
+
+    workflow = (workflow or "").lower().strip()
+
+    if "openrouter" in workflow:
+        provider = "openrouter"
+
+    elif "openai" in workflow and "gemini" not in workflow:
+        provider = "openai"
+
+    else:
+        provider = "gemini"
+
+    return generate_text(
+        prompt=prompt,
+        provider=provider,
+        model=model,
+        temperature=0.4,
+    )
 
 # =========================================================
 # GEMINI VISION
@@ -961,6 +988,7 @@ __all__ = [
 
     "generate_text",
     "generate_vision",
+    "ai_text",
 
     "generate_recap_script",
     "translate_recap_to_myanmar",
