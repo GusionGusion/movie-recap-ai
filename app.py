@@ -910,14 +910,38 @@ recap_mode = st.selectbox(
 )
 
 ai_col1, ai_col2 = st.columns(2)
+
 with ai_col1:
-    ai_workflow=st.selectbox("🤖 AI Workflow",["Gemini + OpenAI (Hybrid)","Gemini Only","OpenAI Only"],index=0,key="main_ai_workflow")
+    ai_workflow = st.selectbox(
+        "🤖 AI Workflow",
+        [
+            "Gemini + OpenRouter (Hybrid)",
+            "Gemini Only",
+            "OpenRouter Only",
+            "OpenAI Only"
+        ],
+        index=0,
+        key="main_ai_workflow"
+    )
+
 with ai_col2:
-    openai_model=st.selectbox("🤖 OpenAI Model",OPENAI_MODELS,index=0,key="main_openai_model")
-st.caption(("✅" if GEMINI_API_KEY else "❌")+" Gemini API Key  |  "+("✅" if OPENAI_API_KEY else "❌")+" OpenAI API Key")
+    openrouter_model = st.text_input(
+        "🤖 OpenRouter Model",
+        value=os.getenv(
+            "OPENROUTER_MODEL",
+            "openrouter/free"
+        ),
+        key="main_openrouter_model"
+    )
+
+st.caption(
+    ("✅" if GEMINI_API_KEY else "❌")
+    + " Gemini API Key  |  "
+    + ("✅" if st.secrets.get("OPENROUTER_API_KEY", "") else "❌")
+    + " OpenRouter API Key"
+)
 
 settings_col1, settings_col2 = st.columns(2)
-
 
 with settings_col1:
 
