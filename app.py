@@ -177,11 +177,27 @@ def _gateway_scene(prompt, items):
     return result or ""
 
 
-def ai_text(prompt, workflow, model):
-    # workflow/model are kept in the function signature so the rest of the
-    # original app does not need unnecessary changes. Provider selection is
-    # now handled by ai.py.
-    return _gateway_text(prompt, "Text Generation")
+def _gateway_scene(prompt, items):
+    """Send Scene Analysis through ai.py as a single vision request."""
+    image_bytes = _make_scene_contact_sheet(items)
+
+    if not image_bytes:
+        raise RuntimeError(
+            "Scene Analysis frames could not be prepared."
+        )
+
+    result = generate_vision(
+        prompt,
+        image_bytes,
+        "image/jpeg",
+        provider="openrouter"
+    )
+
+    record_ai_gateway_call(
+        "Scene Analysis - OpenRouter"
+    )
+
+    return result or ""
 
 
 def ai_scene(prompt, items, workflow, model):
@@ -952,7 +968,7 @@ with settings_col2:
         "⏱️ Freeze Every",
         min_value=5.0,
         max_value=60.0,
-        value=10.0,
+        value=8.0,
         step=1.0,
         key="main_freeze_interval"
     )
@@ -1004,7 +1020,7 @@ with settings_col2:
         "🔠 Subtitle Font Size",
         min_value=20,
         max_value=100,
-        value=50,
+        value=40,
         step=1,
         key="main_subtitle_size"
     )
@@ -1301,7 +1317,7 @@ if blur_enabled:
         "💪 Blur Strength",
         min_value=1,
         max_value=30,
-        value=12,
+        value=8,
         step=1,
         key="main_blur_strength"
     )
