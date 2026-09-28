@@ -933,6 +933,8 @@ with ai_col2:
         ),
         key="main_openrouter_model"
     )
+    # Compatibility for existing Scene Analysis / AI calls
+openai_model = openrouter_model
 
 st.caption(
     ("✅" if GEMINI_API_KEY else "❌")
