@@ -276,13 +276,13 @@ def ai_text(
 
     workflow = (workflow or "").lower().strip()
 
-    # OpenRouter
+    # OpenRouter → Text generation
     if "openrouter" in workflow:
         provider = "openrouter"
 
-    # Hybrid → use OpenAI for text generation
+    # Hybrid → OpenRouter for text
     elif "hybrid" in workflow:
-        provider = "openai"
+        provider = "openrouter"
 
     # OpenAI Only
     elif "openai" in workflow:
@@ -291,10 +291,6 @@ def ai_text(
     # Gemini Only
     else:
         provider = "gemini"
-
-    # Do not send OpenAI model names to Gemini
-    if provider == "gemini":
-        model = None
 
     return generate_text(
         prompt=prompt,
