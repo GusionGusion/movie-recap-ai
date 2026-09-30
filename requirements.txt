@@ -1,8 +1,7 @@
 streamlit
 google-genai
 openai
-faster-whisper==1.1.1
-av==12.3.0
+faster-whisper
 edge-tts
 opencv-python-headless
 numpy
