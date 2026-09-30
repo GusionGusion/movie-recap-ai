@@ -2,6 +2,7 @@ streamlit
 google-genai
 openai
 faster-whisper
+av<19
 edge-tts
 opencv-python-headless
 numpy
