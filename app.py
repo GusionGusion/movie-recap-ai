@@ -2081,8 +2081,6 @@ STRICT RULES:
 18. Do not include bullet points.
 19. Return ONLY the Myanmar narration.
 20. Use natural Myanmar sentence endings.
-21. Do NOT mechanically replace "တယ်" with "ဒယ်".
-22. Use "ဒယ်" only when it naturally fits spoken narration.
 
 VOICEOVER STYLE:
 
@@ -2137,8 +2135,6 @@ STRICT RULES:
 17. Do not include bullet points.
 18. Return ONLY the Myanmar narration.
 19. Use natural Myanmar sentence endings.
-20. Do NOT mechanically replace "တယ်" with "ဒယ်".
-21. Use "ဒယ်" only when it naturally fits spoken narration.
 
 VOICEOVER STYLE:
 
