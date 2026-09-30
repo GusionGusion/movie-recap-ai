@@ -2026,60 +2026,136 @@ if "recap_script" in st.session_state:
     ) or run_all:
 
         try:
+
             recap_script = (
                 st.session_state[
                     "recap_script"
                 ]
-            )
+            ).strip()
+
+            if not recap_script:
+
+                raise RuntimeError(
+                    "English recap script is empty."
+                )
+
+            # -------------------------------------------------
+            # MOVIE RECAP TRANSLATION
+            # -------------------------------------------------
 
             if recap_mode == "🎬 Movie Recap":
+
                 prompt = f"""
-Translate the following movie recap narration
-into natural spoken Myanmar Burmese.
+You are a professional Myanmar movie recap translator.
 
-Rules:
+Translate the English movie recap below into
+natural, fluent, conversational Myanmar Burmese.
 
-- Preserve the exact meaning.
-- Do not add story events.
-- Do not remove story events.
-- Keep chronological order.
-- Do not add explanation.
-- Do not add English.
-- Write only the Myanmar narration.
-- Make it natural and smooth for voiceover.
-- Use natural Myanmar sentence endings.
-- Do not force or replace words such as "တယ်" with another form.
-- Keep the narration easy to understand and suitable for spoken delivery.
+IMPORTANT:
+The result will be used directly as a Myanmar voiceover.
+It must sound like a real person naturally telling a movie story.
 
-English Recap:
-
+ENGLISH RECAP:
 {recap_script}
+
+STRICT RULES:
+
+1. Preserve the original story meaning exactly.
+2. Preserve the exact chronological order.
+3. Do NOT invent any event, character, location, action,
+   dialogue, emotion, or information.
+4. Do NOT remove important story information.
+5. Do NOT summarize further.
+6. Do NOT expand the story.
+7. Do NOT translate word-by-word.
+8. Translate according to the meaning and context.
+9. Use natural spoken Myanmar Burmese.
+10. Use simple words that are easy to understand when listening.
+11. Make sentences flow naturally from one sentence to the next.
+12. Keep character references clear.
+13. Do not change who performs an action.
+14. Do not change the meaning of actions or events.
+15. Do not add explanations or translator notes.
+16. Do not include English.
+17. Do not include headings.
+18. Do not include bullet points.
+19. Return ONLY the Myanmar narration.
+20. Use natural Myanmar sentence endings.
+21. Do NOT mechanically replace "တယ်" with "ဒယ်".
+22. Use "ဒယ်" only when it naturally fits spoken narration.
+
+VOICEOVER STYLE:
+
+- Natural
+- Smooth
+- Cinematic
+- Conversational
+- Easy to listen to
+- Not overly formal
+- Not literary
+- Not word-for-word translation
+
+Return ONLY the final Myanmar narration.
 """
+
+            # -------------------------------------------------
+            # ANIMAL DOCUMENTARY TRANSLATION
+            # -------------------------------------------------
 
             else:
+
                 prompt = f"""
-Translate the following animal documentary recap narration
-into natural spoken Myanmar Burmese.
+You are a professional Myanmar wildlife documentary translator.
 
-Rules:
+Translate the English documentary narration below into
+natural, fluent, spoken Myanmar Burmese.
 
-- Preserve the exact meaning.
-- Do not add animal facts.
-- Do not remove information.
-- Keep chronological order.
-- Do not invent animal behavior or abilities.
-- Do not add explanation.
-- Do not add English.
-- Write only the Myanmar narration.
-- Make it natural and smooth for documentary voiceover.
-- Use natural Myanmar sentence endings.
-- Do not force or replace words such as "တယ်" with another form.
-- Keep the narration easy to understand and suitable for spoken delivery.
+IMPORTANT:
+The result will be used directly as Myanmar documentary voiceover.
 
-English Recap:
-
+ENGLISH RECAP:
 {recap_script}
+
+STRICT RULES:
+
+1. Preserve the exact meaning.
+2. Preserve the exact chronological order.
+3. Do NOT invent animal facts.
+4. Do NOT invent behavior, abilities, habitat, or biology.
+5. Do NOT add information that is not in the English narration.
+6. Do NOT remove important information.
+7. Do NOT summarize further.
+8. Do NOT expand the narration.
+9. Do NOT translate word-by-word.
+10. Translate according to natural Myanmar meaning.
+11. Use clear and natural spoken Myanmar.
+12. Keep the documentary tone.
+13. Make the narration smooth for voiceover.
+14. Do not add explanations or translator notes.
+15. Do not include English.
+16. Do not include headings.
+17. Do not include bullet points.
+18. Return ONLY the Myanmar narration.
+19. Use natural Myanmar sentence endings.
+20. Do NOT mechanically replace "တယ်" with "ဒယ်".
+21. Use "ဒယ်" only when it naturally fits spoken narration.
+
+VOICEOVER STYLE:
+
+- Natural documentary narration
+- Smooth
+- Clear
+- Conversational
+- Easy to understand
+- Not overly formal
+- Not word-for-word translation
+
+Return ONLY the final Myanmar narration.
 """
+
+            # -------------------------------------------------
+            # TRANSLATION PROVIDER
+            # -------------------------------------------------
 
             myanmar_text = ai_text(
                 prompt,
@@ -2087,10 +2163,14 @@ English Recap:
                 openai_model
             )
 
-            if not myanmar_text.strip():
+            myanmar_text = (
+                myanmar_text or ""
+            ).strip()
+
+            if not myanmar_text:
 
                 raise RuntimeError(
-                    "Gemini returned an empty Myanmar recap."
+                    "Myanmar translation returned an empty response."
                 )
 
             st.session_state[
