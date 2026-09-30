@@ -14,8 +14,7 @@ import shutil
 import base64
 import time
 import streamlit.components.v1 as components
-import importlib.metadata
-import av
+
 
 # =========================================================
 # LOCAL INTERACTIVE BLUR VIDEO COMPONENT
@@ -48,15 +47,6 @@ else:
 # =========================================================
 # PAGE SETTINGS
 # =========================================================
-st.write(
-    "Faster-Whisper:",
-    importlib.metadata.version("faster-whisper")
-)
-
-st.write(
-    "PyAV:",
-    av.__version__
-)
 
 st.set_page_config(
     page_title="Movie Recap AI",
