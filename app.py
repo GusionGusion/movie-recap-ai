@@ -14,7 +14,7 @@ import shutil
 import base64
 import time
 import streamlit.components.v1 as components
-
+import importlib.metadata as metadata
 
 # =========================================================
 # LOCAL INTERACTIVE BLUR VIDEO COMPONENT
@@ -1443,7 +1443,18 @@ if uploaded_file is not None:
 
 st.divider()
 
+st.caption(
+    f"faster-whisper: "
+    f"{metadata.version('faster-whisper')}"
+)
 
+try:
+    st.caption(
+        f"av: {metadata.version('av')}"
+    )
+except Exception:
+    st.caption("av: not installed")
+    
 # =========================================================
 # MOVIE TRANSCRIPT
 # =========================================================
