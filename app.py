@@ -161,24 +161,18 @@ def _make_scene_contact_sheet(items):
     return encoded.tobytes() if success else None
 
 
-def _gateway_scene(prompt, items):
-    """Send Scene Analysis through ai.py as a single vision request."""
-    image_bytes = _make_scene_contact_sheet(items)
-
-    if not image_bytes:
-        raise RuntimeError("Scene Analysis frames could not be prepared.")
-
-    result = generate_vision(
-        prompt,
-        image_bytes,
-        "image/jpeg"
-    )
-    record_ai_gateway_call("Scene Analysis")
-    return result or ""
-
+# =========================================================
+# SCENE ANALYSIS AI GATEWAY
+# =========================================================
 
 def _gateway_scene(prompt, items):
-    """Send Scene Analysis through ai.py as a single vision request."""
+    """
+    Send Scene Analysis through ai.py as a single vision request.
+
+    AI provider/model routing is handled by ai.py.
+    Do not force OpenRouter here.
+    """
+
     image_bytes = _make_scene_contact_sheet(items)
 
     if not image_bytes:
@@ -189,19 +183,29 @@ def _gateway_scene(prompt, items):
     result = generate_vision(
         prompt,
         image_bytes,
-        "image/jpeg",
-        provider="openrouter"
+        "image/jpeg"
     )
 
     record_ai_gateway_call(
-        "Scene Analysis - OpenRouter"
+        "Scene Analysis"
     )
 
     return result or ""
 
 
 def ai_scene(prompt, items, workflow, model):
-    return _gateway_scene(prompt, items)
+    """
+    Scene Analysis entry point.
+
+    The actual AI provider routing is handled
+    by ai.py through generate_vision().
+    """
+
+    return _gateway_scene(
+        prompt,
+        items
+    )
+    
 
 
 def show_ai_gateway_usage_sidebar():
